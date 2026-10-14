@@ -23,19 +23,11 @@ que la velocidad queda determinada por la conservacion de masa.
 from __future__ import annotations
 
 import math
-import os
-import sys
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple
 
-try:
-    from src.core.thermo_data import FluidState, ThermoDatabase
-except ImportError:  # ejecucion directa: `python src/thermo/rating.py`
-    sys.path.insert(0, os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..")))
-    from src.core.thermo_data import FluidState, ThermoDatabase
-
-from src.thermo.sizing import (
+from intercambiador.core.thermo_data import FluidState, ThermoDatabase
+from intercambiador.thermo.sizing import (
     RE_KERN_MAX, RE_KERN_MIN, V_CORAZA_MAX, V_CORAZA_MIN, V_TUBO_MAX,
     V_TUBO_MIN, ShellGeometry, Stream, TubeGeometry, chequeo_saturacion,
     coeficiente_global, diametro_equivalente, factor_correccion_F,

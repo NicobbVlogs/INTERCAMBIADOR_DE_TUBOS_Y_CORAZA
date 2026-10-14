@@ -19,17 +19,10 @@ Referencias: D.Q. Kern, "Process Heat Transfer" (cap. 7 y 11);
 from __future__ import annotations
 
 import math
-import os
-import sys
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
-try:
-    from src.core.thermo_data import FluidState, ThermoDatabase
-except ImportError:  # ejecucion directa: `python src/thermo/sizing.py`
-    sys.path.insert(0, os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..")))
-    from src.core.thermo_data import FluidState, ThermoDatabase
+from intercambiador.core.thermo_data import FluidState, ThermoDatabase
 
 db = ThermoDatabase()
 

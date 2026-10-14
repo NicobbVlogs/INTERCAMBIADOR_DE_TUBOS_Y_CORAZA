@@ -5,7 +5,7 @@ widgets.py - Controles reutilizables del formulario (capa VISTA).
 Responsabilidad unica: capturar y validar *sintacticamente* lo que el usuario
 escribe (vacios, no-numericos, rangos fisicos obvios) y resaltar en rojo los
 campos problematicos. NO contiene fisica ni termodinamica: la validacion de
-ingenieria vive en src/thermo y src/mechanical.
+ingenieria vive en intercambiador.thermo y intercambiador.mechanical.
 """
 from __future__ import annotations
 

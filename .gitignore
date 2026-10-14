@@ -1,0 +1,15 @@
+# Entorno de uv
+.venv/
+uv.lock.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/

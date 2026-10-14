@@ -1,8 +1,9 @@
 """
 DISENO MECANICO - Estandar TEMA Clase "C" (+ ASME VIII Div. 1 para espesores)
 =============================================================================
-Recibe la geometria termica resuelta por `src/thermo/sizing.py` (D_s, N_tt, L,
-d_o, pitch) y devuelve las dimensiones de fabricacion del equipo:
+Recibe la geometria termica resuelta por `intercambiador.thermo.sizing`
+(D_s, N_tt, L, d_o, pitch) y devuelve las dimensiones de fabricacion del
+equipo:
 
     carcasa  ->  espesor T_s y diametro externo D_o
     haz      ->  limites de tubos D_otl / D_ctl

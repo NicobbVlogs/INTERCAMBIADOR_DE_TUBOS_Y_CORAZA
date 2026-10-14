@@ -8,24 +8,27 @@ tubos y coraza, con interfaz gráfica y generación de planos acotados.
 
 ## Cómo ejecutarlo
 
-**Doble clic en `ejecutar.bat`** (Windows), o desde una terminal en la carpeta
-del proyecto:
+El proyecto se gestiona con [uv](https://docs.astral.sh/uv/) (única
+herramienta necesaria además de Python). **Doble clic en `ejecutar.bat`**
+(Windows), o desde una terminal en la carpeta del proyecto:
 
 ```
-py src/gui/app.py
+uv sync                    # primera vez: crea .venv e instala el proyecto
+uv run intercambiador      # abre la interfaz gráfica
 ```
 
-No requiere instalar dependencias: usa solo la librería estándar de Python 3
-(`tkinter`). No necesita internet.
+El código usa solo la librería estándar de Python 3 (`tkinter`); no hay
+dependencias de tiempo de ejecución ni necesita internet.
 
 Para comprobar que todo funciona correctamente:
 
 ```
-py verificar.py
+uv run pytest
 ```
 
-Ese comando ejecuta 54 pruebas sobre las cuatro fases y termina diciendo
-`TODO CORRECTO` o enumerando las fallas.
+Ese comando ejecuta la suite de pruebas (pytest) sobre las cuatro fases, los
+ejemplos y la robustez. Cualquier fallo se reporta con su causa; con todo
+correcto, pytest termina con `N passed`.
 
 ---
 
@@ -43,7 +46,7 @@ Ese comando ejecuta 54 pruebas sobre las cuatro fases y termina diciendo
 ## Estructura del proyecto
 
 ```
-src/
+src/intercambiador/   Paquete Python (se instala con uv sync)
   core/        Base de datos termofísica — 10 fluidos, 5 materiales
     thermo_data.py          ThermoDatabase: cp, mu, k, rho = f(T)
   thermo/      Cálculo térmico (Método de Kern)
@@ -57,16 +60,31 @@ src/
     widgets.py              Campos validados, tooltips, tablas
     drawings.py             Vistas paramétricas sobre Canvas
     io_state.py             Proyectos .he (JSON)
-ejemplos/      5 proyectos .he verificados
-verificar.py   Suite de verificación de las 4 fases
+  ejemplos/    5 proyectos .he verificados (viajan con el paquete)
+tests/         Suite de pruebas (pytest) — sustituye a verificar.py
+pyproject.toml Proyecto uv (uv_build + gui-script) y configuración de pytest
+uv.lock        Lockfile reproducible (se versiona)
 ejecutar.bat   Lanzador para Windows
 ```
 
 **Arquitectura MVC estricta:** la GUI no contiene ni una línea de física. Todo
 cálculo vive en `core`, `thermo` y `mechanical`; `controller.py` es el único
 punto de contacto. Hasta las ventanas de velocidad recomendada que la interfaz
-resalta en ámbar se importan desde `src/thermo/sizing.py`, para que el
+resalta en ámbar se importan desde `intercambiador.thermo.sizing`, para que el
 resaltado nunca pueda contradecir al motor de cálculo.
+
+**Gestión con uv:** `pyproject.toml` define el proyecto con el backend
+`uv_build` y un punto de entrada gráfico (`intercambiador`); el grupo `dev`
+aporta `pytest`. Comandos útiles:
+
+| Comando | Qué hace |
+|---|---|
+| `uv sync` | Crea/actualiza `.venv` según `uv.lock` e instala el proyecto |
+| `uv run intercambiador` | Lanza la interfaz gráfica (gui-script) |
+| `uv run python -m intercambiador` | Ídem, vía `__main__.py` |
+| `uv run pytest` | Ejecuta la suite completa |
+| `uv run pytest tests/test_core.py` | Ejecuta un módulo de pruebas |
+| `uv run pytest -m "not slow"` | Omite el barrido de robustez |
 
 ---
 

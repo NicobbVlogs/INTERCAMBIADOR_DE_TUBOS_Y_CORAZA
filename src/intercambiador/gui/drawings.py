@@ -2,8 +2,9 @@
 """
 drawings.py - Vistas esquematicas 2D parametricas (Canvas de Tkinter).
 
-Todo lo que se dibuja proviene de las cotas calculadas en src/mechanical y
-src/thermo: no hay imagenes estaticas ni dimensiones inventadas. Cada funcion
+Todo lo que se dibuja proviene de las cotas calculadas en
+intercambiador.mechanical y intercambiador.thermo: no hay imagenes estaticas
+ni dimensiones inventadas. Cada funcion
 devuelve un diccionario {tag: texto_de_cota} para que la aplicacion muestre
 pop-ups interactivos al hacer clic sobre una pieza.
 """

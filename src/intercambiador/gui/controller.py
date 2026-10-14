@@ -3,9 +3,9 @@
 controller.py - Puente MVC entre la GUI y los modulos de calculo.
 
 Unica responsabilidad: traducir el diccionario plano del formulario a los
-dataclasses de `src.thermo` / `src.mechanical`, invocar sus funciones y
-devolver los objetos resultado tal cual. Aqui NO se calcula fisica: solo
-conversion de unidades de entrada (mm->m, bar->Pa) y despacho.
+dataclasses de `intercambiador.thermo` / `intercambiador.mechanical`, invocar
+sus funciones y devolver los objetos resultado tal cual. Aqui NO se calcula
+fisica: solo conversion de unidades de entrada (mm->m, bar->Pa) y despacho.
 
 Si alguno de los modulos de calculo falta o falla al importarse, se activa un
 modo *dummy* que levanta un ValueError educativo, de modo que la GUI siga
@@ -13,16 +13,9 @@ siendo ejecutable y muestre el mensaje en un pop-up.
 """
 from __future__ import annotations
 
-import os
-import sys
 from typing import Any, Dict, List, Optional, Tuple
 
-try:
-    from src.core.thermo_data import ThermoDatabase
-except ImportError:  # ejecucion directa: `python src/gui/app.py`
-    sys.path.insert(0, os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..")))
-    from src.core.thermo_data import ThermoDatabase
+from intercambiador.core.thermo_data import ThermoDatabase
 
 db = ThermoDatabase()
 
@@ -30,13 +23,16 @@ db = ThermoDatabase()
 MODULOS_OK = True
 ERROR_IMPORT = ""
 try:
-    from src.thermo.sizing import (F_MIN_ACEPTABLE, V_CORAZA_MAX, V_CORAZA_MIN,
-                                   V_TUBO_MAX, V_TUBO_MIN, ShellGeometry,
-                                   SizingResult, Stream, TubeGeometry,
-                                   dimensionar)
-    from src.thermo.rating import ExchangerGeometry, RatingResult, evaluar
-    from src.mechanical.design import (S_ADMISIBLE, MechanicalInput,
-                                       MechanicalResult, disenar_mecanico)
+    from intercambiador.thermo.sizing import (F_MIN_ACEPTABLE, V_CORAZA_MAX,
+                                              V_CORAZA_MIN, V_TUBO_MAX,
+                                              V_TUBO_MIN, ShellGeometry,
+                                              SizingResult, Stream,
+                                              TubeGeometry, dimensionar)
+    from intercambiador.thermo.rating import (ExchangerGeometry, RatingResult,
+                                              evaluar)
+    from intercambiador.mechanical.design import (S_ADMISIBLE, MechanicalInput,
+                                                  MechanicalResult,
+                                                  disenar_mecanico)
 except Exception as exc:  # pragma: no cover - red de seguridad para la GUI
     MODULOS_OK = False
     ERROR_IMPORT = str(exc)
@@ -45,8 +41,8 @@ except Exception as exc:  # pragma: no cover - red de seguridad para la GUI
     F_MIN_ACEPTABLE = 0.0
 
 # Las ventanas de buena practica (velocidades, factor F) se reexportan desde
-# `src.thermo.sizing`: la GUI las PINTA pero no las define. Una sola fuente de
-# verdad evita que el resaltado ambar contradiga al motor de calculo.
+# `intercambiador.thermo.sizing`: la GUI las PINTA pero no las define. Una sola
+# fuente de verdad evita que el resaltado ambar contradiga al motor de calculo.
 
 
 # =============================================================================
@@ -91,9 +87,10 @@ def _exigir_modulos() -> None:
         raise ValueError(
             "Los módulos de cálculo no pudieron importarse.\n\n"
             f"Detalle técnico: {ERROR_IMPORT}\n\n"
-            "Verifique que existan src/thermo/sizing.py, src/thermo/rating.py "
-            "y src/mechanical/design.py, y ejecute la aplicación desde la "
-            "carpeta raíz del proyecto.")
+            "Verifique que el paquete `intercambiador` esté completo e "
+            "instalado (`uv sync`), y que existan intercambiador/thermo/"
+            "sizing.py, intercambiador/thermo/rating.py y "
+            "intercambiador/mechanical/design.py.")
 
 
 def _corrientes(d: Dict[str, Any]) -> Tuple[Any, Any]:
@@ -103,7 +100,7 @@ def _corrientes(d: Dict[str, Any]) -> Tuple[Any, Any]:
     fria = Stream(fluido=d["fluido_fri"], m_dot=d["m_fri"],
                   T_in=d["tin_fri"], T_out=d.get("tout_fri"))
     # La regla "exactamente una T_out incognita" la impone y explica
-    # balance_energia() en src/thermo/sizing.py: no se duplica aqui.
+    # balance_energia() en intercambiador.thermo.sizing: no se duplica aqui.
     return caliente, fria
 
 

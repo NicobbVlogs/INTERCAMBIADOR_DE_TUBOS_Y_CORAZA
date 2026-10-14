@@ -1,0 +1,39 @@
+[project]
+name = "intercambiador-tubos-y-coraza"
+version = "0.1.0"
+description = "Software educativo de diseno termico (Metodo de Kern) y mecanico (TEMA Clase C) de intercambiadores de calor de tubos y coraza"
+readme = "README.md"
+requires-python = ">=3.10"
+# Solo libreria estandar (tkinter incluido en los binarios de CPython).
+dependencies = []
+
+# Punto de entrada GUI: en Windows se envuelve en un .exe sin consola.
+[project.gui-scripts]
+intercambiador = "intercambiador.gui.app:main"
+
+# Backend de build nativo de uv (misma politica de versionado que uv).
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14"]
+build-backend = "uv_build"
+
+# El nombre de distribucion es largo; el paquete importable es `intercambiador`.
+[tool.uv.build-backend]
+module-name = "intercambiador"
+
+# ---------------------------------------------------------------------------
+# Grupos de dependencias (PEP 735). `uv sync` instala `dev` por defecto.
+# ---------------------------------------------------------------------------
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+]
+
+# ---------------------------------------------------------------------------
+# pytest: runner oficial de la suite (sustituye a verificar.py).
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "gui: pruebas que levantan ventanas de tkinter (requieren display)",
+    "slow: barridos amplios de robustez (pueden tardar)",
+]

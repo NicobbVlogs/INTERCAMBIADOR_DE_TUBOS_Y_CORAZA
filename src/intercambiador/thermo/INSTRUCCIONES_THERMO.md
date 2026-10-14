@@ -2,7 +2,7 @@
 
 ## 1. OBJETIVO DEL MÓDULO
 Implementar la lógica matemática del Método de Kern. Debes separar estrictamente el código en dos archivos: `sizing.py` (Diseño) y `rating.py` (Evaluación). 
-**API:** Importa siempre `from src.core.thermo_data import ThermoDatabase`. Evalúa propiedades a la $T_{media} = (T_{in} + T_{out}) / 2$.
+**API:** Importa siempre `from intercambiador.core.thermo_data import ThermoDatabase`. Evalúa propiedades a la $T_{media} = (T_{in} + T_{out}) / 2$.
 
 ## 2. REGLAS PARA SIZING (`sizing.py`) - ALGORITMO ITERATIVO SOBRE "U"
 - **Inputs:** Caudales, temperaturas de entrada, una temperatura de salida y restricciones geométricas (ej. longitud máxima).

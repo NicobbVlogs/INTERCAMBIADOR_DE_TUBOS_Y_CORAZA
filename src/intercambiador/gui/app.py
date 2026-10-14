@@ -6,36 +6,33 @@ app.py - Ventana principal del software educativo de intercambiadores
 Arquitectura MVC estricta:
     VISTA        -> este archivo + widgets.py + drawings.py
     CONTROLADOR  -> controller.py
-    MODELO       -> src/core, src/thermo, src/mechanical
+    MODELO       -> intercambiador.core / .thermo / .mechanical
 
 Esta capa NO calcula física: captura datos, delega y renderiza. Todo
 `ValueError` que suba desde el modelo se atrapa y se convierte en un pop-up
 educativo, sin cerrar la aplicación.
 
-Ejecución:  python src/gui/app.py      (desde la raíz del proyecto)
+Ejecución:  uv run intercambiador   (o: uv run python -m intercambiador)
 """
 from __future__ import annotations
 
 import os
-import sys
 import traceback
 import tkinter as tk
+from importlib.resources import files
 from tkinter import filedialog, messagebox, ttk
 from typing import Any, Dict, Optional
 
-if __package__ in (None, ""):                 # ejecución directa del archivo
-    sys.path.insert(0, os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..")))
-
-from src.gui import controller as ctrl
-from src.gui import drawings, io_state
-from src.gui.widgets import (COLOR_FONDO, COLOR_TITULO, CampoInvalido,
-                             CampoLista, CampoNumerico, Formulario,
-                             MarcoScroll, llenar_tabla, tabla_resultados)
+from intercambiador.gui import controller as ctrl
+from intercambiador.gui import drawings, io_state
+from intercambiador.gui.widgets import (COLOR_FONDO, COLOR_TITULO, CampoInvalido,
+                                        CampoLista, CampoNumerico, Formulario,
+                                        MarcoScroll, llenar_tabla,
+                                        tabla_resultados)
 
 TITULO = "Intercambiador de Tubos y Coraza · Método de Kern / TEMA"
-RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-DIR_EJEMPLOS = os.path.join(RAIZ, "ejemplos")
+# Proyectos .he de ejemplo, empaquetados junto al código (intercambiador/ejemplos).
+DIR_EJEMPLOS = str(files("intercambiador") / "ejemplos")
 
 # Caso base de arranque: agua-agua, tubos de cobre 3/4 in BWG 16, pitch 1 in
 # triangular. Converge sin advertencias y supera el chequeo de empaquetamiento
@@ -237,7 +234,7 @@ class Aplicacion(tk.Tk):
         cal = self._marco(padre, "Corriente CALIENTE", fila, 0)
         f.add("fluido_cal", CampoLista(
             cal, 0, "Fluido", fluidos, ayuda="Base de datos termofísica de "
-            "alta fidelidad (src/core).", comando=self._actualizar_limites))
+            "alta fidelidad (intercambiador.core).", comando=self._actualizar_limites))
         self.lbl_lim_cal = ttk.Label(cal, style="Nota.TLabel", text="")
         self.lbl_lim_cal.grid(row=1, column=0, columnspan=3, sticky="w", padx=6)
         f.add("m_cal", CampoNumerico(cal, 2, "Caudal másico", "kg/s",
@@ -428,7 +425,7 @@ class Aplicacion(tk.Tk):
             side="left", padx=8)
         ttk.Label(cab, style="Nota.TLabel",
                   text="Dibujos paramétricos: se generan desde las cotas "
-                       "calculadas en src/mechanical.").pack(side="left",
+                       "calculadas en intercambiador.mechanical.").pack(side="left",
                                                              padx=10)
 
         self.canvas = tk.Canvas(marco, bg="white", width=760, height=470,
@@ -655,7 +652,7 @@ class Aplicacion(tk.Tk):
         self._render_advertencias(r.advertencias)
 
     def _render_hidraulico(self, r) -> None:
-        # Los umbrales vienen de src/thermo/sizing.py vía el controlador.
+        # Los umbrales vienen de intercambiador.thermo.sizing via el controlador.
         llenar_tabla(self.tbl_hidraulico, [
             ("LADO TUBOS", "", "", "", "titulo"),
             ("Velocidad másica media", "v_t", f"{r.v_t:.3f}", "m/s",

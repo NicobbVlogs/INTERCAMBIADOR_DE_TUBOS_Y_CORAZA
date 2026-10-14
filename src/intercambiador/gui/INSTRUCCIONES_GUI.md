@@ -2,7 +2,7 @@
 
 ## 1. OBJETIVO DEL MÓDULO
 Desarrollar la interfaz visual (GUI) del software educativo. Su función es capturar los datos del usuario, enviarlos a los módulos de cálculo (`thermo` y `mechanical`) y mostrar los resultados de forma amigable.
-**REGLA DE ORO:** La GUI **NO DEBE** contener lógica matemática ni de termodinámica. Su única responsabilidad es importar las funciones de `src/thermo/` y `src/mechanical/` y renderizar los resultados. (Arquitectura Modelo-Vista-Controlador estricta).
+**REGLA DE ORO:** La GUI **NO DEBE** contener lógica matemática ni de termodinámica. Su única responsabilidad es importar las funciones de `intercambiador/thermo/` y `intercambiador/mechanical/` y renderizar los resultados. (Arquitectura Modelo-Vista-Controlador estricta).
 
 ## 2. ESTRUCTURA DE LA INTERFAZ (MENÚS REQUERIDOS)
 Basado en el software de referencia (Tan & Fok, 2006), la ventana principal debe tener un Menú Superior con:
@@ -20,7 +20,7 @@ Basado en el software de referencia (Tan & Fok, 2006), la ventana principal debe
 ## 3. DIBUJOS TÉCNICOS Y VISUALIZACIÓN
 El módulo debe incluir un sistema de renderizado (ej. usando Canvas de Tkinter, QGraphicsView de PyQt, o Matplotlib integrado).
 - Debe dibujar esquemas paramétricos (no imágenes estáticas) de: La Carcasa, Distribución de Tubos (Layout cuadrado/triangular), Placas deflectoras y Cabezales.
-- **Interactividad:** Mostrar ventanas emergentes (pop-ups) o paneles laterales con las cotas exactas (milímetros/metros) provenientes de `src/mechanical/`.
+- **Interactividad:** Mostrar ventanas emergentes (pop-ups) o paneles laterales con las cotas exactas (milímetros/metros) provenientes de `intercambiador/mechanical/`.
 
 ## 4. SANITY CHECKS VISUALES Y MANEJO DE ERRORES
 - **Prevención:** Usa menús desplegables (`Combobox`) en lugar de texto libre siempre que sea posible para evitar errores de tipeo en nombres de fluidos.

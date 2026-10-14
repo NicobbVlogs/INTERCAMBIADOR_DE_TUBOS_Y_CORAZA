@@ -11,23 +11,23 @@ Actúa como un Ingeniero de Software Senior y Experto en Diseño Térmico. Está
 Este proyecto está dividido en 4 pilares. **REGLA ESTRICTA:** Antes de ejecutar cualquier tarea en una de estas carpetas, **DEBES ABRIR Y LEER** su archivo de instrucciones específico para conocer la teoría y restricciones:
 
 1. **Base de Datos Termofísica:**
-   - 📂 Carpeta: `src/core/`
-   - 📜 **LEE ANTES DE ACTUAR:** `src/core/INSTRUCCIONES_CORE.md`
+   - 📂 Carpeta: `src/intercambiador/core/`
+   - 📜 **LEE ANTES DE ACTUAR:** `src/intercambiador/core/INSTRUCCIONES_CORE.md`
    - *Nota:* Una vez creado `thermo_data.py`, confía en su API. NO lo vuelvas a leer completo para ahorrar tokens.
 
 2. **Cálculos Térmicos (Método de Kern):**
-   - 📂 Carpeta: `src/thermo/`
-   - 📜 **LEE ANTES DE ACTUAR:** `src/thermo/INSTRUCCIONES_THERMO.md`
+   - 📂 Carpeta: `src/intercambiador/thermo/`
+   - 📜 **LEE ANTES DE ACTUAR:** `src/intercambiador/thermo/INSTRUCCIONES_THERMO.md`
    - *Nota:* Contiene `sizing.py` (itera sobre $U$) y `rating.py` (itera sobre $T_{out}$).
 
 3. **Diseño Mecánico (Estándar TEMA Clase "C"):**
-   - 📂 Carpeta: `src/mechanical/`
-   - 📜 **LEE ANTES DE ACTUAR:** `src/mechanical/INSTRUCCIONES_MECH.md`
+   - 📂 Carpeta: `src/intercambiador/mechanical/`
+   - 📜 **LEE ANTES DE ACTUAR:** `src/intercambiador/mechanical/INSTRUCCIONES_MECH.md`
    - *Nota:* Dimensionamiento físico basado en resultados térmicos.
 
 4. **Interfaz Gráfica (GUI):**
-   - 📂 Carpeta: `src/gui/`
-   - 📜 **LEE ANTES DE ACTUAR:** `src/gui/INSTRUCCIONES_GUI.md`
+   - 📂 Carpeta: `src/intercambiador/gui/`
+   - 📜 **LEE ANTES DE ACTUAR:** `src/intercambiador/gui/INSTRUCCIONES_GUI.md`
    - *Nota:* Renderizado visual, captura de inputs y manejo de alertas. 
 
 ## 3. LEYES INQUEBRANTABLES (DON'Ts)

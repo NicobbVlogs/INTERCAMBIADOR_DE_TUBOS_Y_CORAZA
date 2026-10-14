@@ -7,7 +7,7 @@ Unica fuente de verdad de propiedades para el diseno termico (Kern) y mecanico
 
 API PUBLICA (no leer este archivo desde otros modulos, basta con esto):
 --------------------------------------------------------------------------------
-    from src.core.thermo_data import db, FluidState, SolidMaterial
+    from intercambiador.core.thermo_data import db, FluidState, SolidMaterial
 
     st = db.get_fluid_state("Agua", 25.0, unit="C")   # -> FluidState
     st.cp, st.mu, st.k, st.rho, st.Pr                 # SI: J/kg.K, Pa.s, W/m.K, kg/m3, -

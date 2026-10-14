@@ -14,5 +14,5 @@ Basarse en las ecuaciones de dimensionamiento mecánico estándar (Eqs 19-32 del
 
 ## 3. INTEGRACIÓN
 - Este módulo recibe la geometría calculada en `sizing.py` (ej. $D_s, N_{tt}, A$) y arroja las dimensiones de fabricación exactas (milímetros/metros).
-- Los resultados de este módulo serán los que la Interfaz Gráfica (`src/gui/`) utilizará para renderizar los dibujos técnicos 2D.
+- Los resultados de este módulo serán los que la Interfaz Gráfica (`intercambiador/gui/`) utilizará para renderizar los dibujos técnicos 2D.
 - **Sanity Checks:** Validar que los espesores cumplan con márgenes de tolerancia de presión (Design Pressure) y corrosión, evitando medidas de manufactura irreales.
