@@ -35,12 +35,14 @@ try:
                                    SizingResult, Stream, TubeGeometry,
                                    dimensionar)
     from src.thermo.rating import ExchangerGeometry, RatingResult, evaluar
-    from src.mechanical.design import (S_ADMISIBLE, MechanicalInput,
-                                       MechanicalResult, disenar_mecanico)
+    from src.mechanical.design import (S_ADMISIBLE, HOLGURA_HAZ,
+                                       MechanicalInput, MechanicalResult,
+                                       disenar_mecanico)
 except Exception as exc:  # pragma: no cover - red de seguridad para la GUI
     MODULOS_OK = False
     ERROR_IMPORT = str(exc)
     S_ADMISIBLE = {"Acero al carbono": 0.0}
+    HOLGURA_HAZ = {}
     V_TUBO_MIN = V_TUBO_MAX = V_CORAZA_MIN = V_CORAZA_MAX = 0.0
     F_MIN_ACEPTABLE = 0.0
 
@@ -76,6 +78,24 @@ def materiales_carcasa() -> List[str]:
 def limites_fluido(nombre: str) -> Tuple[float, float]:
     """Ventana de validez (T_min, T_max) en grados Celsius."""
     return db.get_limits(nombre, unit="C")
+
+
+def desc_carcasa(tipo: str) -> str:
+    """Descripcion del tipo de coraza TEMA (Fig. N-1.2)."""
+    try:
+        from src.mechanical.design import DESCRIPCION_CARCASA
+        return DESCRIPCION_CARCASA.get(str(tipo).upper(), "")
+    except Exception:
+        return ""
+
+
+def desc_cabezal(posicion: str, tipo: str) -> str:
+    """Descripcion del tipo de cabezal TEMA (Fig. N-1.2)."""
+    try:
+        from src.mechanical.design import DESCRIPCION_CABEZAL
+        return DESCRIPCION_CABEZAL.get(str(tipo).upper(), "")
+    except Exception:
+        return ""
 
 
 def densidad(fluido: str, T_celsius: float) -> float:
@@ -131,9 +151,13 @@ def correr_sizing(d: Dict[str, Any]):
     _exigir_modulos()
     caliente, fria = _corrientes(d)
     tubos, coraza = _geometria(d)
+    # La holgura haz-coraza la fija el tipo de cabezal trasero TEMA elegido:
+    # sin reservarla, el haz no cabe en la coraza (tipos flotantes P/S/T/W).
+    holgura = HOLGURA_HAZ.get(str(d.get("cab_trasero", "M")).upper(), 0.0)
     return dimensionar(caliente, fria, tubos, coraza,
                        lado_tubos=d["lado_tubos"],
-                       U_inicial=d["u_inicial"])
+                       U_inicial=d["u_inicial"],
+                       holgura_haz=holgura)
 
 
 def correr_rating(d: Dict[str, Any]):
@@ -176,7 +200,6 @@ def correr_mecanico(d: Dict[str, Any], D_s: float, N_tt: int,
         P_T=d["pitch_mm"] / 1000.0,
         L_bc=d["baffle_mm"] / 1000.0,
         corte_baffle=d["corte_pct"] / 100.0,
-        layout=LAYOUTS[d["layout"]],
         rho_s=densidad(f_s, T_s),
         rho_t=densidad(f_t, T_t),
         m_dot_s=m_s,
@@ -184,6 +207,7 @@ def correr_mecanico(d: Dict[str, Any], D_s: float, N_tt: int,
         P_diseno_s=d["p_coraza_bar"] * 1.0e5,
         P_diseno_t=d["p_tubos_bar"] * 1.0e5,
         material=d["mat_carcasa"],
+        material_tubo=d["mat_tubo"],
         corrosion=d["corrosion_mm"] / 1000.0,
         tipo_carcasa=d["tipo_carcasa"],
         cabezal_frontal=d["cab_frontal"],

@@ -25,10 +25,12 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 try:
+    from src.core.errores import ErrorDiseno
     from src.core.thermo_data import FluidState, ThermoDatabase
 except ImportError:  # ejecucion directa: `python src/thermo/sizing.py`
     sys.path.insert(0, os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..")))
+    from src.core.errores import ErrorDiseno
     from src.core.thermo_data import FluidState, ThermoDatabase
 
 db = ThermoDatabase()
@@ -50,6 +52,17 @@ V_CORAZA_MIN, V_CORAZA_MAX = 0.3, 1.5  # m/s
 F_MIN_ACEPTABLE = 0.75   # Debajo de esto el arreglo 1-n es inadmisible.
 RE_KERN_MIN = 2.0e3      # Validez inferior de la correlacion de coraza.
 RE_KERN_MAX = 1.0e6
+
+# Tipos de coraza TEMA (Figura N-1.2 del estandar). El calculo termico de
+# este modulo es monofasico y de una pasada por coraza; los tipos de flujo
+# partido (G, H, J) y la caldera K se aproximan con el mismo modelo de Kern
+# y se marcan con advertencia explicita (ver `aviso_tipo_carcasa`).
+TEMA_CARCASAS = ("E", "F", "G", "H", "J", "K", "X")
+
+# Incertidumbre tipica de U cuando el flujo NO es turbulento: Kern calibro sus
+# correlaciones en regimen turbulento; fuera de el, la dispersion de las
+# correlaciones laminar/transicion se traslada al coeficiente global.
+INCERTIDUMBRE_U = {"turbulento": 15.0, "transicion": 25.0, "laminar": 40.0}
 
 
 # =============================================================================
@@ -127,19 +140,47 @@ class SizingResult:
     dp_s: float              # Caida de presion lado coraza [Pa]
     iteraciones: int
     regimen_tubo: str
+    regimen_coraza: str
     advertencias: List[str] = field(default_factory=list)
 
 
 # =============================================================================
 # 3. BLOQUES DE CALCULO ELEMENTALES
 # =============================================================================
+def validar_temperatura(fluido: str, T: float, descripcion: str) -> None:
+    """
+    Comprueba que UN punto de temperatura cae dentro de la ventana de validez
+    del fluido (fase declarada en la base termofisica).
+
+    Es la pieza que faltaba para que ninguna combinacion de temperaturas se
+    cuele por la validacion de temperaturas MEDIAS: si un fluido entra a 95 C
+    y sale a 45 C su media (70 C) parece valida, pero el punto de entrada ya
+    esta fuera de rango. Aqui se valida cada punto, uno por uno.
+    """
+    T_min, T_max = db.get_limits(fluido, "C")
+    if T_min <= T <= T_max:
+        return
+    raise ErrorDiseno(
+        titulo=f"«{fluido}» fuera de su ventana de temperatura",
+        que_paso=f"{descripcion} = {T:.1f} °C y el rango válido de «{fluido}» "
+                 f"es {T_min:.0f} – {T_max:.0f} °C (fase líquida/gas declarada).",
+        por_que="Las correlaciones termofísicas (cp, μ, k, ρ) están ajustadas "
+                "solo dentro de ese rango. Fuera de él el fluido cambia de fase "
+                "o deja de existir en esa fase, y extrapolar la correlación "
+                "produce propiedades sin sentido físico.",
+        solucion=f"Ajuste esa temperatura al intervalo {T_min:.0f} – "
+                 f"{T_max:.0f} °C, o elija un fluido cuya ventana lo cubra "
+                 "(el menú de la pestaña Design muestra la validez bajo cada "
+                 "fluido).",
+        referencia="src/core/thermo_data.py · ventana de validez por fluido",
+    )
+
+
 def balance_energia(caliente: Stream, fria: Stream,
-                    tol: float = 1e-5, max_iter: int = 50
+                    tol: float = 1e-4, max_iter: int = 50
                     ) -> Tuple[float, float, float]:
     """
-    Balance de energia termico en estado estacionario (Kern, 1950, Cap. 5):
-        q = m_dot_h * cp_h * (T_h_in - T_h_out) = m_dot_c * cp_c * (T_c_out - T_c_in)
-    Con validacion de limites de fase en entradas y salidas.
+    Balance de energia puro: q = m*cp*dT en ambos lados.
 
     Exactamente una de las dos temperaturas de salida debe ser desconocida.
     Como cp depende de la T media (que depende de la salida buscada), se
@@ -147,160 +188,203 @@ def balance_energia(caliente: Stream, fria: Stream,
 
     Devuelve (q [W], T_h_out [C], T_c_out [C]).
     """
-    if caliente.m_dot <= 0.0 or fria.m_dot <= 0.0:
-        raise ValueError("Los caudales masicos deben ser estrictamente positivos.")
-
     incognitas = [s.T_out is None for s in (caliente, fria)]
     if sum(incognitas) != 1:
-        raise ValueError(
-            "Balance de energia mal planteado: debe conocerse exactamente UNA "
-            "temperatura de salida (la otra se calcula).\n"
-            "   Indique T_out en una sola de las dos corrientes."
+        raise ErrorDiseno(
+            titulo="Balance de energía mal planteado",
+            que_paso="Se han indicado las DOS temperaturas de salida, o ninguna "
+                     "de las dos (debe quedar exactamente una vacía).",
+            por_que="El calor intercambiado es q = ṁ·cp·ΔT en cada lado. Si las "
+                    "cuatro temperaturas son datos, el sistema está sobre-"
+                    "especificado y dos balances distintos se contradecirían.",
+            solucion="Deje VACÍA una de las dos casillas de «T salida» (la "
+                     "incógnita que usted quiere que el programa calcule) y "
+                     "deje la otra con su valor.",
+            referencia="q = ṁ·cp·ΔT (balance de energía)",
         )
     if caliente.T_in <= fria.T_in:
-        raise ValueError(
-            "Violacion de la 2a Ley: el fluido 'caliente' entra a "
-            f"{caliente.T_in:.1f} C y el 'frio' a {fria.T_in:.1f} C.\n"
-            "   El calor no fluye espontaneamente de frio a caliente."
+        raise ErrorDiseno(
+            titulo="Violación de la 2.ª Ley de la Termodinámica",
+            que_paso=f"El fluido «caliente» entra a {caliente.T_in:.1f} °C y el "
+                     f"«frío» entra a {fria.T_in:.1f} °C.",
+            por_que="El calor fluye espontáneamente solo de la zona más caliente "
+                    "a la más fría. Si el llamado «caliente» entra más frío que "
+                    "el «frío», no existe fuerza motriz térmica alguna.",
+            solucion="Revise qué corriente es cada una: cambie los fluidos de "
+                     "lado (o sus temperaturas de entrada) de modo que la "
+                     "corriente caliente entre a mayor temperatura.",
+            referencia="Segunda Ley de la Termodinámica",
         )
 
-    # Validar que las temperaturas conocidas esten dentro del rango de fase
-    db.get_fluid_state(caliente.fluido, caliente.T_in, "C")
-    db.get_fluid_state(fria.fluido, fria.T_in, "C")
+    # --- Validacion de los puntos de temperatura CONOCIDOS, uno por uno ------
+    validar_temperatura(caliente.fluido, caliente.T_in, "Temperatura de entrada del fluido caliente")
+    validar_temperatura(fria.fluido, fria.T_in, "Temperatura de entrada del fluido frío")
 
     # Lado con las dos temperaturas conocidas -> fija la carga termica q.
     conocida, buscada = (fria, caliente) if caliente.T_out is None else (caliente, fria)
-    db.get_fluid_state(conocida.fluido, conocida.T_out, "C")
-
-    if conocida is caliente and conocida.T_out >= conocida.T_in:
-        raise ValueError("El fluido caliente debe enfriarse (T_h,out < T_h,in).")
-    if conocida is fria and conocida.T_out <= conocida.T_in:
-        raise ValueError("El fluido frio debe calentarse (T_c,out > T_c,in).")
-
-    cp_k = db.get_fluid_state(
-        conocida.fluido, 0.5 * (conocida.T_in + conocida.T_out), "C"
-    ).cp
+    if conocida.T_out is not None:
+        if conocida is caliente and conocida.T_out > conocida.T_in:
+            raise ErrorDiseno(
+                titulo="El fluido «caliente» se estaría calentando",
+                que_paso=f"La corriente caliente entra a {conocida.T_in:.1f} °C y "
+                         f"se pide que salga a {conocida.T_out:.1f} °C (más caliente).",
+                por_que="En un intercambiador la corriente caliente CIEDE calor; "
+                        "su salida no puede estar por encima de su entrada.",
+                solucion="Corrija la temperatura de salida del lado caliente "
+                         "(debe ser menor que la de entrada) o canjee las "
+                         "corrientes de lado.",
+                referencia="Balance de energía del lado caliente",
+            )
+        if conocida is fria and conocida.T_out < conocida.T_in:
+            raise ErrorDiseno(
+                titulo="El fluido «frío» se estaría enfriando",
+                que_paso=f"La corriente fría entra a {conocida.T_in:.1f} °C y se "
+                         f"pide que salga a {conocida.T_out:.1f} °C (más fría).",
+                por_que="En un intercambiador la corriente fría GANA calor; su "
+                        "salida no puede estar por debajo de su entrada.",
+                solucion="Corrija la temperatura de salida del lado frío (debe "
+                         "ser mayor que la de entrada) o canjee las corrientes.",
+                referencia="Balance de energía del lado frío",
+            )
+        validar_temperatura(conocida.fluido, conocida.T_out,
+                            "Temperatura de salida del fluido "
+                            + ("caliente" if conocida is caliente else "frío"))
+    cp_k = db.get_fluid_state(conocida.fluido,
+                              0.5 * (conocida.T_in + conocida.T_out), "C").cp
     q = abs(conocida.m_dot * cp_k * (conocida.T_out - conocida.T_in))
 
-    # Sustitucion sucesiva inicializada en T_in (garantizado dentro del rango
-    # valido del fluido); T media acotada a la ventana de validez.
+    # Sustitucion sucesiva sobre la salida desconocida (cp = f(T_media)).
     signo = -1.0 if buscada is caliente else 1.0
-    T_min_b, T_max_b = db.get_limits(buscada.fluido, "C")
-    T_out = buscada.T_in
-    convergio = False
-
+    T_out = buscada.T_in + signo * 20.0
     for _ in range(max_iter):
-        T_med = min(max(0.5 * (buscada.T_in + T_out), T_min_b + 1e-3), T_max_b - 1e-3)
-        cp_b = db.get_fluid_state(buscada.fluido, T_med, "C").cp
+        cp_b = db.get_fluid_state(buscada.fluido,
+                                  0.5 * (buscada.T_in + T_out), "C").cp
         nuevo = buscada.T_in + signo * q / (buscada.m_dot * cp_b)
         if abs(nuevo - T_out) < tol:
             T_out = nuevo
-            convergio = True
             break
         T_out = nuevo
-
-    if not convergio:
-        raise ValueError(
-            "El balance de energia no convergio en el numero maximo de iteraciones."
-        )
-
-    # Validar que la temperatura de salida calculada respete los limites de fase
-    db.get_fluid_state(buscada.fluido, T_out, "C")
 
     T_h_out = T_out if buscada is caliente else caliente.T_out
     T_c_out = T_out if buscada is fria else fria.T_out
 
+    # La temperatura CALCULADA tambien debe caer en la ventana de su fluido:
+    # es el punto donde suelen aparecer los excesos (p. ej. etanol > 75 C).
+    validar_temperatura(buscada.fluido, T_h_out if buscada is caliente else T_c_out,
+                        "Temperatura de salida calculada del fluido "
+                        + ("caliente" if buscada is caliente else "frío"))
+
     if T_h_out <= fria.T_in:
-        raise ValueError(
-            "Cruce de temperaturas imposible en contracorriente: el caliente "
-            f"saldria a {T_h_out:.1f} C, por debajo de la entrada del frio "
-            f"({fria.T_in:.1f} C).\n"
-            "   Reduzca la carga termica o aumente el caudal caliente."
+        raise ErrorDiseno(
+            titulo="Cruce de temperaturas imposible",
+            que_paso=f"El fluido caliente saldría a {T_h_out:.1f} °C, por debajo "
+                     f"de la entrada del fluido frío ({fria.T_in:.1f} °C).",
+            por_que="Eso implicaría transferir calor hacia una zona más caliente "
+                    "en el extremo frío del equipo: violaría la 2.ª Ley en "
+                    "contracorriente.",
+            solucion=f"Reduzca la carga térmica, aumente el caudal caliente o "
+                     f"baje la temperatura de entrada del frío hasta que "
+                     f"T_h,salida > {fria.T_in:.1f} °C.",
+            referencia="LMTD en contracorriente: ΔT₂ = T_h,out − T_c,in > 0",
         )
     if T_c_out >= caliente.T_in:
-        raise ValueError(
-            f"Cruce de temperaturas imposible: el frio saldria a {T_c_out:.1f} C, "
-            f"por encima de la entrada del caliente ({caliente.T_in:.1f} C)."
+        raise ErrorDiseno(
+            titulo="Cruce de temperaturas imposible",
+            que_paso=f"El fluido frío saldría a {T_c_out:.1f} °C, por encima de "
+                     f"la entrada del fluido caliente ({caliente.T_in:.1f} °C).",
+            por_que="El fluido frío no puede superar la temperatura que lo está "
+                    "calentando: la diferencia de temperatura motriz llegaría a "
+                    "ser negativa.",
+            solucion=f"Reduzca la carga térmica o aumente el caudal frío hasta "
+                     f"que T_c,salida < {caliente.T_in:.1f} °C.",
+            referencia="LMTD en contracorriente: ΔT₁ = T_h,in − T_c,out > 0",
         )
     return q, T_h_out, T_c_out
 
 
 def lmtd_contracorriente(T_h_in: float, T_h_out: float,
                          T_c_in: float, T_c_out: float) -> float:
-    """
-    Diferencia media logaritmica de temperatura (LMTD) en contracorriente puro:
-        LMTD = (dT1 - dT2) / ln(dT1 / dT2)   (Kern, 1950, Cap. 5, Eq. 5.14)
-    donde:
-        dT1 = T_h_in - T_c_out
-        dT2 = T_h_out - T_c_in
-    Para R = 1 (dT1 = dT2) se remueve la singularidad 0/0 mediante el limite LMTD = dT1.
-    """
+    """Diferencia media logaritmica de temperatura para flujo a contracorriente."""
     dT1 = T_h_in - T_c_out
     dT2 = T_h_out - T_c_in
     if dT1 <= 0.0 or dT2 <= 0.0:
-        raise ValueError(
-            "LMTD indefinida: existe un cruce de temperaturas "
-            f"(dT1 = {dT1:.2f} C, dT2 = {dT2:.2f} C). Revise el balance termico."
+        raise ErrorDiseno(
+            titulo="LMTD indefinida (cruce de temperaturas)",
+            que_paso=f"Las diferencias de temperatura en los extremos son "
+                     f"ΔT₁ = {dT1:.2f} °C y ΔT₂ = {dT2:.2f} °C; al menos una es "
+                     f"negativa o nula.",
+            por_que="La media logarítmica solo existe cuando ambas diferencias "
+                    "extremas son positivas. Un signo negativo significa que las "
+                    "curvas de temperatura se cruzan dentro del equipo.",
+            solucion="Revise el balance térmico: reduzca la carga o modifique "
+                     "las temperaturas de entrada hasta que ninguna diferencia "
+                    "extrema sea negativa.",
+            referencia="LMTD = (ΔT₁ − ΔT₂)/ln(ΔT₁/ΔT₂)",
         )
-    # Singularidad 0/0 cuando dT1 = dT2 (R = 1 en contracorriente): tolerancia
-    # RELATIVA (la absoluta pierde cifras en log(dT1/dT2) ~ 0). El limite de
-    # la LMTD es la media aritmetica de ambos extremos.
     if abs(dT1 - dT2) <= 1e-6 * max(dT1, dT2):
+        # Singularidad R = 1 (dT1 = dT2): el limite por L'Hopital es exactamente
+        # dT1 = dT2 = 0.5*(dT1+dT2). Se usa tolerancia RELATIVA para que la
+        # decision no dependa de la escala de las temperaturas.
         return 0.5 * (dT1 + dT2)
     return (dT1 - dT2) / math.log(dT1 / dT2)
 
 
 def factor_correccion_F(T_h_in: float, T_h_out: float,
                         T_c_in: float, T_c_out: float,
-                        n_pasos: int, n_corazas: int = 1) -> float:
+                        n_pasos: int, tipo_carcasa: str = "E") -> float:
     """
-    Factor de correccion F_LMTD de Bowman-Mueller-Nagle para configuraciones
-    de 1-2n y N_s corazas en serie (Kern, 1950, Cap. 5; estandares TEMA):
-        q = U * A * F * LMTD
-    Para 1-2 (1 coraza, 2 o mas pasos pares de tubos):
-        F = (sqrt(R^2 + 1) / (R - 1)) * ln((1 - P)/(1 - P*R)) / ln((2/P - 1 - R + sqrt(R^2+1))/(2/P - 1 - R - sqrt(R^2+1)))
-    donde P = (T_c_out - T_c_in)/(T_h_in - T_c_in) y R = (T_h_in - T_h_out)/(T_c_out - T_c_in).
-    Para N_s corazas en serie (ej. carcasa TEMA F con deflector longitudinal, N_s=2),
-    se reduce P segun la formula de corazas multiples de Bowman (Kern Eq. 7.42).
+    Factor de correccion F de Bowman, segun el tipo de coraza TEMA (Fig. N-1.2).
+
+    E          : 1 pasada por coraza   -> F de Bowman 1-n (o F = 1 con 1 paso).
+    F          : 2 pasadas por coraza en serie -> se reduce el P por pasada y
+                 se aplica la misma expresion 1-2 a cada pasada.
+    G, H, J    : flujo partido/dividido -> cada rama trabaja casi en
+                 contracorriente, F = 1 (aproximacion conservadora usual).
+    K          : caldera (lado coraza isotermico en ebullicion) -> F = 1.
+    X          : flujo cruzado puro, una pasada -> F = 1.
     """
-    if n_pasos == 1:
-        return 1.0
-    if n_pasos < 2 or n_pasos % 2 != 0:
-        raise ValueError(f"n_pasos debe ser 1 o un entero par >= 2 (recibido: {n_pasos}).")
-    if n_corazas < 1:
-        raise ValueError(f"n_corazas debe ser >= 1 (recibido: {n_corazas}).")
-
-    dT_max = T_h_in - T_c_in
-    dT_c = T_c_out - T_c_in
-    dT_h = T_h_in - T_h_out
-    if dT_max <= 0.0 or dT_c <= 0.0 or dT_h <= 0.0:
-        raise ValueError("Temperaturas incoherentes para el calculo del factor F.")
-
-    P = dT_c / dT_max
-    R = dT_h / dT_c
-
-    if P >= 1.0 or P * R >= 1.0:
-        raise ValueError(
-            f"Cruce termodinamico absoluto alcanzado (P={P:.3f}, R={R:.3f})."
+    tipo = tipo_carcasa.upper()
+    if tipo not in TEMA_CARCASAS:
+        raise ErrorDiseno(
+            titulo=f"Tipo de coraza TEMA «{tipo}» desconocido",
+            que_paso=f"Se pidió el tipo de coraza «{tipo}».",
+            por_que="La Figura N-1.2 del estándar TEMA solo define los tipos "
+                    f"{', '.join(TEMA_CARCASAS)}.",
+            solucion=f"Seleccione uno de: {', '.join(TEMA_CARCASAS)}.",
+            referencia="TEMA, Figura N-1.2 (Table of TEMA types)",
         )
+    if n_pasos == 1 or tipo in ("G", "H", "J", "K", "X"):
+        # Contracorriente puro, flujo partido o cruzado: sin penalizacion 1-2.
+        return 1.0
 
-    # Reduccion de N_s corazas en serie (p. ej. Carcasa TEMA F -> n_corazas = 2)
-    if n_corazas > 1:
-        if abs(R - 1.0) < 1e-6:
-            P = P / (n_corazas - (n_corazas - 1.0) * P)
-        else:
-            ratio = ((1.0 - P * R) / (1.0 - P)) ** (1.0 / n_corazas)
-            P = (ratio - 1.0) / (ratio - R)
+    P = (T_c_out - T_c_in) / (T_h_in - T_c_in)
+    R = (T_h_in - T_h_out) / (T_c_out - T_c_in)
+
+    Ns = 2 if tipo == "F" else 1          # pasadas por coraza en serie
+    if Ns > 1:
+        # P efectivo por pasada de coraza (Kern/Bowman: pasadas identicas).
+        base = ((1.0 - P * R) / (1.0 - P)) ** (1.0 / Ns)
+        if abs(R - base) < 1e-9:
+            base = R - 1e-9               # evita 0/0 en el caso degenerado
+        P = (1.0 - base) / (R - base)
 
     raiz = math.sqrt(R * R + 1.0)
     arg_den = 2.0 / P - 1.0 - R
     num_ln = arg_den + raiz
     den_ln = arg_den - raiz
     if den_ln <= 0.0 or num_ln <= 0.0:
-        raise ValueError(
-            f"Arreglo {n_corazas}-{n_pasos} termodinamicamente imposible para este "
-            f"servicio (P_efectivo = {P:.3f}, R = {R:.3f}).\n"
-            "   Use mas pasos por coraza o un intercambiador en contracorriente puro."
+        raise ErrorDiseno(
+            titulo="Arreglo termodinámicamente imposible",
+            que_paso=f"El arreglo {Ns}-{n_pasos} no puede realizarse con "
+                     f"P = {P:.3f} y R = {R:.3f}: el factor de corrección F no "
+                     f"existe.",
+            por_que="La solución de las temperaturas exige que las corrientes se "
+                    "crucen más allá de lo que permite el patrón de flujo de "
+                    "este arreglo (el F de Bowman se hace negativo o infinito).",
+            solucion="Use más pasos por coraza (o por tubos), divida el servicio "
+                     "en varias corazas en serie, o un intercambiador en "
+                     "contracorriente puro (1 paso por tubos).",
+            referencia="Factor F de Bowman (LMTD corregido)",
         )
     log_term = math.log(num_ln / den_ln)
 
@@ -311,13 +395,8 @@ def factor_correccion_F(T_h_in: float, T_h_out: float,
 
 def diametro_equivalente(P_T: float, D_o: float, layout: int) -> float:
     """
-    Diametro equivalente hidraulico D_e para flujo cruzado en coraza (Kern, 1950, Cap. 7):
-    Basado en el perimetro mojado de transferencia de calor: D_e = 4 * A_libre / perimetro.
-
-    - Arreglo cuadrado (layout 45 o 90 deg, Kern Eq. 7.2):
-        D_e = 4 * (P_T^2 - pi * D_o^2 / 4) / (pi * D_o)
-    - Arreglo triangular (layout 30 o 60 deg, Kern Eq. 7.3):
-        D_e = 4 * ((sqrt(3)/4) * P_T^2 - (pi/8) * D_o^2) / (pi * D_o / 2)
+    Diametro equivalente de Kern para el lado coraza (basado en el perimetro
+    mojado de transferencia de calor, NO en el perimetro hidraulico completo).
     """
     if layout in (30, 60):   # Triangular: medio triangulo equilatero
         area_libre = (math.sqrt(3.0) / 4.0) * P_T ** 2 - (math.pi / 8.0) * D_o ** 2
@@ -342,35 +421,79 @@ def diametro_equivalente(P_T: float, D_o: float, layout: int) -> float:
 def nusselt_tubos(Re: float, Pr: float, D_i: float, L: float,
                   phi: float) -> Tuple[float, str]:
     """
-    Numero de Nusselt interno en tubos: Nu_t = h_i * D_i / k (Kern, 1950, Cap. 6).
-    Continuo en las fronteras Re = 2100 y Re = 10000. Devuelve (Nu, regimen).
+    Nusselt interno de tubos. Devuelve (Nu, regimen).
 
-    - Re < 2100 (laminar):
-        Sieder & Tate con piso Nu = 3.66 (T_w constante):
-        Nu_lam = max(1.86 * (Re * Pr * D_i / L)^(1/3) * phi, 3.66)   (Kern Eq. 6.2)
-    - Re >= 10000 (turbulento):
-        Sieder & Tate turbulento:
-        Nu_turb = 0.027 * Re^0.8 * Pr^(1/3) * phi                   (Kern Eq. 6.3)
-    - 2100 <= Re < 10000 (transicion):
-        Interpolacion continua monótona entre Nu_lam(2100) y Nu_turb(10000)
-        garantizando continuidad C0 (salto medido ~ 10^-7).
+    Re >= 1e4        : Sieder-Tate turbulento.
+    2100 <= Re < 1e4 : Hausen (transicion).
+    Re < 2100        : Sieder-Tate laminar, con piso Nu = 3.66 (T_w constante).
+
+    BANDAS DE MEZCLA: al cruzar Re = 2100 o Re = 1e4 las correlaciones se
+    diferencian ~10-14 %, y ese salto se traslada a U y lo hace oscilar en la
+    iteracion. En dos franjas estrechas se mezclan las ramas adyacentes en
+    escala logaritmica, de modo que Nu(Re) queda CONTINUA sin alterar las
+    formulas clasicas fuera de las franjas.
     """
-    if Re <= 0.0:
-        raise ValueError("El numero de Reynolds en tubos debe ser positivo.")
+    def _laminar() -> float:
+        return max(1.86 * (Re * Pr * D_i / L) ** (1.0 / 3.0) * phi, 3.66)
 
-    def _nu_lam(re: float) -> float:
-        return max(1.86 * (re * Pr * D_i / L) ** (1.0 / 3.0) * phi, 3.66)
+    def _hausen() -> float:
+        return max(0.116 * (Re ** (2.0 / 3.0) - 125.0) * Pr ** (1.0 / 3.0)
+                   * (1.0 + (D_i / L) ** (2.0 / 3.0)) * phi, 3.66)
 
-    def _nu_turb(re: float) -> float:
-        return 0.027 * (re ** 0.8) * (Pr ** (1.0 / 3.0)) * phi
+    def _turbulento() -> float:
+        return 0.023 * Re ** 0.8 * Pr ** (1.0 / 3.0) * phi
 
-    if Re < 2100.0:
-        return _nu_lam(Re), "laminar"
-    if Re >= 1.0e4:
-        return _nu_turb(Re), "turbulento"
+    def _mezcla(nu_a: float, nu_b: float, w: float) -> float:
+        return math.exp((1.0 - w) * math.log(max(nu_a, 1e-12))
+                        + w * math.log(max(nu_b, 1e-12)))
 
-    w = (Re - 2100.0) / (1.0e4 - 2100.0)
-    return (1.0 - w) * _nu_lam(2100.0) + w * _nu_turb(1.0e4), "transicion"
+    if Re < 1900.0:
+        return _laminar(), "laminar"
+    if Re < 2300.0:                       # banda laminar -> Hausen
+        w = (Re - 1900.0) / 400.0
+        return _mezcla(_laminar(), _hausen(), w), "laminar"
+    if Re < 8000.0:
+        return _hausen(), "transicion"
+    if Re < 1.2e4:                        # banda Hausen -> turbulento
+        w = (Re - 8000.0) / 4000.0
+        return _mezcla(_hausen(), _turbulento(), w), "transicion"
+    return _turbulento(), "turbulento"
+
+
+def nusselt_coraza(Re: float, Pr: float, phi: float,
+                   D_e: Optional[float] = None,
+                   L_b: Optional[float] = None) -> Tuple[float, str]:
+    """
+    Correlacion de Kern para el lado coraza con baffles segmentados al 25 %.
+    Devuelve (Nu, regimen).
+
+    Re >= 2e3      : Kern turbulento, Nu = 0.36 Re^0.55 Pr^(1/3) phi.
+    Re < 100       : Kern laminar,  Nu = 1.72 (Re Pr D_e/L_b)^(1/3) phi,
+                     con piso Nu = 3.66 (pared isotermica).
+    100 <= Re < 2e3: transicion - interpolacion log-log entre ambas ramas
+                     (ninguna de las dos correlaciones es valida ahi).
+
+    La rama laminar SIEMPRE requiere D_e y L_b (espaciado de baffles): en
+    laminar el desarrollo termico depende de la longitud del canal de flujo
+    cruzado, no solo del Reynolds. Sin esos datos se degrada al piso Nu = 3.66.
+    """
+    if Re >= 2.0e3:
+        return 0.36 * Re ** 0.55 * Pr ** (1.0 / 3.0) * phi, "turbulento"
+
+    def _laminar(Re_x: float) -> float:
+        if D_e is None or L_b is None or L_b <= 0.0:
+            return 3.66
+        return max(1.72 * (Re_x * Pr * D_e / L_b) ** (1.0 / 3.0) * phi, 3.66)
+
+    if Re < 100.0:
+        return _laminar(Re), "laminar"
+
+    # Transicion 100 - 2000: interpolacion log-log entre ramas extremas.
+    lam_100 = max(_laminar(100.0), 1e-12)
+    turb_2000 = max(0.36 * (2.0e3) ** 0.55 * Pr ** (1.0 / 3.0) * phi, 1e-12)
+    w = math.log(Re / 100.0) / math.log(2000.0 / 100.0)
+    Nu = math.exp((1.0 - w) * math.log(lam_100) + w * math.log(turb_2000))
+    return Nu, "transicion"
 
 
 def factor_friccion_tubos(Re: float, epsilon: float, D_i: float) -> float:
@@ -395,6 +518,8 @@ def caida_presion_tubos(Re: float, rho: float, v_t: float, L: float,
         dp_friccion = n_pasos * f_t * (L / D_i) * (0.5 * rho * v_t^2) / phi_corr
         dp_retorno  = 4.0 * n_pasos * (0.5 * rho * v_t^2)
     (incluye 4 cabezas de velocidad por paso debido al giro en cabezales).
+    El exponente de la correccion por viscosidad de pared depende del regimen:
+    0.14 turbulento, 0.25 laminar (parche 5.2.1).
     Devuelve (dp_t [Pa], f_t [-]).
     """
     f_t = factor_friccion_tubos(Re, epsilon, D_i)
@@ -429,6 +554,7 @@ def caida_presion_coraza(Re_s: float, rho_s: float, G_s: float, D_s: float,
     donde:
         N_baffles = L / B - 1
         G_s = m_dot_s / A_s
+    Para carcasas TEMA F (2 pasadas de coraza en serie) interviene n_corazas.
     Devuelve (dp_s [Pa], f_s [-]).
     """
     f_s = factor_friccion_coraza(Re_s)
@@ -437,20 +563,39 @@ def caida_presion_coraza(Re_s: float, rho_s: float, G_s: float, D_s: float,
     return dp_s, f_s
 
 
-def nusselt_coraza(Re: float, Pr: float, phi: float) -> float:
-    """
-    Correlacion de Kern para flujo cruzado en coraza con baffles segmentados al 25% (Kern, 1950, Eq. 7.4):
-        Nu_s = 0.36 * Re_s^0.55 * Pr^(1/3) * phi_s
-    donde Re_s = G_s * D_e / mu_s.
-    """
-    return 0.36 * Re ** 0.55 * Pr ** (1.0 / 3.0) * phi
-
-
 def mu_pared(fluido: str, T_w: float) -> float:
     """Viscosidad a la temperatura de pared, acotada al rango valido del fluido."""
     T_min, T_max = db.get_limits(fluido, "C")
     T_w = min(max(T_w, T_min + 0.01), T_max - 0.01)
     return db.get_fluid_state(fluido, T_w, "C").mu
+
+
+# Advertencia (no error) si un liquido opera demasiado cerca del extremo de su
+# ventana de validez: el calculo sigue siendo valido, pero la minima
+# perturbacion del proceso lo sacaria del modelo monofasico.
+MARGEN_FASE = 5.0   # C
+
+
+def chequeo_cercania_fase(fluido: str, T_pico: float,
+                          margen: float = MARGEN_FASE) -> Optional[str]:
+    """
+    Devuelve una advertencia si T_pico esta a menos de `margen` grados del
+    limite superior de la ventana del fluido, o None si no aplica.
+
+    Ejemplo tipico: agua con un pico a 97 C, a 3 C de su ebullicion a 1 atm.
+    """
+    try:
+        _, T_max = db.get_limits(fluido, "C")
+    except ValueError:
+        return None
+    if T_pico <= T_max - margen:
+        return None
+    return (
+        f"El pico de temperatura de «{fluido}» es {T_pico:.1f} °C: solo "
+        f"{T_max - T_pico:.1f} °C por debajo del límite de su ventana "
+        f"({T_max:.0f} °C, donde cambia de fase a 1 atm). Cualquier "
+        "perturbación del proceso lo sacaría del modelo monofásico de Kern."
+    )
 
 
 # Presion de saturacion del agua [bar] segun IAPWS-IF97. El core modela agua
@@ -492,9 +637,9 @@ def chequeo_saturacion(fluido: str, T_max_op: float) -> Optional[str]:
         return None
     P_sat = presion_saturacion_agua(T_max_op)
     return (
-        f"El agua alcanza {T_max_op:.1f} C: a 1 atm ya habria hervido. El equipo "
-        f"debe operar por encima de ~{P_sat:.1f} bar (presion de saturacion) "
-        "para mantenerla liquida; por debajo, el modelo monofasico de Kern "
+        f"El agua alcanza {T_max_op:.1f} °C: a 1 atm ya habría hervido. El equipo "
+        f"debe operar por encima de ~{P_sat:.1f} bar (presión de saturación) "
+        "para mantenerla líquida; por debajo, el modelo monofásico de Kern "
         "deja de aplicar."
     )
 
@@ -502,14 +647,26 @@ def chequeo_saturacion(fluido: str, T_max_op: float) -> Optional[str]:
 def resistencia_ensuciamiento(corriente: Stream, R_f_metal: float) -> float:
     """
     Resistencia de ensuciamiento de UNA corriente [m2.K/W].
-    Prioridad: dato del usuario > valor TEMA del fluido (parche 5.1) >
-    mitad del R_f total del material (respaldo del parche 5.2.2).
+
+    Jerarquia estricta (parches 5.1 / 5.2.2, TEMA RGP-T-2.4):
+      1. R_f provisto por el usuario en la corriente,
+      2. valor tipico TEMA del fluido (db.get_fouling),
+      3. mitad del R_f total del material (respaldo conservador).
     """
     if corriente.R_f is not None:
         if corriente.R_f < 0.0:
-            raise ValueError(
-                f"El factor de ensuciamiento de {corriente.fluido} no puede "
-                f"ser negativo (R_f = {corriente.R_f:.3e} m2.K/W).")
+            raise ErrorDiseno(
+                titulo="Ensuciamiento negativo",
+                que_paso=f"El factor de ensuciamiento de «{corriente.fluido}» "
+                         f"es R_f = {corriente.R_f:.3e} m²·K/W (negativo).",
+                por_que="El ensuciamiento es una resistencia térmica en serie: "
+                        "solo puede ser cero o positiva. Un valor negativo "
+                        "fabricaría transferencia de calor.",
+                solucion="Use R_f = 0 para un fluido limpio o un valor positivo "
+                         "según TEMA RGP-T-2.4; si no conoce el dato, déjelo en "
+                         "blanco y se tomará el valor TEMA del fluido.",
+                referencia="TEMA RGP-T-2.4 · resistencias de ensuciamiento",
+            )
         return corriente.R_f
     try:
         return db.get_fouling(corriente.fluido)
@@ -519,11 +676,7 @@ def resistencia_ensuciamiento(corriente: Stream, R_f_metal: float) -> float:
 
 def coeficiente_global(h_i: float, h_o: float, D_i: float, D_o: float,
                        k_m: float, R_fi: float, R_fo: float) -> float:
-    """
-    Coeficiente global sucio U_o referido al area EXTERNA de los tubos:
-        1 / U_o = 1 / h_o + R_fo + (D_o * ln(D_o / D_i)) / (2 * k_m) + (D_o / D_i) * R_fi + (D_o / D_i) * (1 / h_i)
-    (Kern, 1950, Cap. 6, Eq. 6.11; estandares TEMA Clase C).
-    """
+    """Coeficiente global sucio U_o referido al area EXTERNA de los tubos."""
     R_total = (D_o / (D_i * h_i)              # conveccion interna
                + R_fi * D_o / D_i             # ensuciamiento interno
                + D_o * math.log(D_o / D_i) / (2.0 * k_m)   # pared cilindrica
@@ -540,15 +693,10 @@ def dimensionar(caliente: Stream, fria: Stream,
                 lado_tubos: str = "frio",
                 U_inicial: float = 700.0,
                 tol: float = 1e-4,
-                max_iter: int = 100) -> SizingResult:
+                max_iter: int = 100,
+                holgura_haz: float = 0.0) -> SizingResult:
     """
-    Dimensiona un intercambiador de tubos y coraza por el Metodo de Kern (Kern, 1950, Cap. 7):
-    Itera sobre el coeficiente global U acoplando transferencia y perdida de carga:
-        1. Balance de energia: q = m_dot * cp * dT (Cap. 5).
-        2. Area de flujo coraza: A_s = (D_s * C * B) / (P_T * n_corazas)  (Eq. 7.1, con C = P_T - D_o).
-        3. Flujo en tubos: a_t = N_tt * a_tubo / n_pasos, u_m = m_dot / (rho * a_t).
-        4. Velocidades masicas: G_s = m_dot_s / A_s, G_t = m_dot_t / a_t.
-        5. Conveccion y caidas de presion: Nu_t (Eq. 6.2/6.3), Nu_s (Eq. 7.4), dp_t (Eq. 7.43), dp_s (Eq. 7.44).
+    Dimensiona un intercambiador de tubos y coraza por el Metodo de Kern.
 
     Parametros
     ----------
@@ -557,6 +705,11 @@ def dimensionar(caliente: Stream, fria: Stream,
     lado_tubos     : 'frio' o 'caliente' -> que corriente va por los tubos.
     U_inicial      : semilla del coeficiente global [W/m2.K].
     tol            : error relativo de U para declarar convergencia.
+    holgura_haz    : holgura diametral haz-coraza que exige el cabezal trasero
+                     TEMA elegido (HOLGURA_HAZ en src/mechanical/design.py).
+                     La correlacion de conteo de tubos da el diametro del HAZ;
+                     la coraza debe ser mas ancha en esa holgura. Si se deja en
+                     0, el resultado subestima D_s con cabezales flotantes.
     """
     # --- 0. Validacion geometrica -------------------------------------------
     if tubos.D_i <= 0.0:
@@ -577,26 +730,29 @@ def dimensionar(caliente: Stream, fria: Stream,
         )
     C_TP = _C_TP[tubos.n_pasos]
 
-    # Validacion dimensional contra entradas en milimetros por error de unidades:
-    if not (0.003 <= tubos.D_o <= 0.150):
-        raise ValueError(
-            f"Diametro de tubo D_o = {tubos.D_o} m fuera de rango fisico [0.003, 0.150] m. "
-            "Verifique que las dimensiones esten en METROS y no en milimetros."
-        )
-    if not (0.1 <= tubos.L <= 30.0) or not (0.01 <= coraza.B <= 10.0):
-        raise ValueError(
-            f"Longitud L = {tubos.L} m o espaciado B = {coraza.B} m fuera de rango en metros."
-        )
-
-    # Corazas efectivas: TEMA F (deflector longitudinal) se modela como 2 pasos
-    # de coraza en serie (reduccion de F de Bowman y area de flujo por paso).
-    n_corazas = 2 if coraza.tipo.upper() == "F" else 1
-
     adv: List[str] = []
     if tubos.PR < 1.25:
         adv.append(
             f"Pitch ratio P_T/D_o = {tubos.PR:.2f} < 1.25: TEMA exige al menos "
             "1.25 para poder limpiar mecanicamente y mandrilar el tubo."
+        )
+    if holgura_haz < 0.0:
+        raise ErrorDiseno(
+            titulo="Holgura haz-coraza negativa",
+            que_paso=f"holgura_haz = {holgura_haz:.4f} m.",
+            por_que="La holgura diametral entre el haz y la coraza es una "
+                    "consecuencia del tipo de cabezal trasero TEMA y no puede "
+                    "ser negativa.",
+            solucion="No cargue la holgura a mano: se toma del tipo de "
+                     "cabezal trasero elegido en el formulario.",
+            referencia="TEMA, Figura N-1.2 · holguras típicas Bell-Delaware",
+        )
+    if holgura_haz > 0.05:
+        adv.append(
+            f"Holgura haz–coraza grande ({holgura_haz*1000:.0f} mm, típica de "
+            "cabezales flotantes extraíbles tipo T): el bypass de fluido por "
+            "el claro carcasa–haz puede degradar h_o. El método de Kern no lo "
+            "modela; en un diseño real verifíquelo con Bell–Delaware."
         )
 
     # --- 1. Balance de energia ----------------------------------------------
@@ -606,7 +762,16 @@ def dimensionar(caliente: Stream, fria: Stream,
 
     dT_lm = lmtd_contracorriente(caliente.T_in, T_h_out, fria.T_in, T_c_out)
     F = factor_correccion_F(caliente.T_in, T_h_out, fria.T_in, T_c_out,
-                            tubos.n_pasos, n_corazas)
+                            tubos.n_pasos, coraza.tipo)
+    if coraza.tipo.upper() not in TEMA_CARCASAS:
+        raise ErrorDiseno(
+            titulo=f"Tipo de coraza TEMA «{coraza.tipo}» desconocido",
+            que_paso=f"Se pidió el tipo de coraza «{coraza.tipo}».",
+            por_que="La Figura N-1.2 del estándar TEMA solo define los tipos "
+                    f"{', '.join(TEMA_CARCASAS)}.",
+            solucion=f"Seleccione uno de: {', '.join(TEMA_CARCASAS)}.",
+            referencia="TEMA, Figura N-1.2 (Table of TEMA types)",
+        )
     if F < F_MIN_ACEPTABLE:
         adv.append(
             f"F = {F:.3f} < {F_MIN_ACEPTABLE}: el arreglo 1-{tubos.n_pasos} es "
@@ -625,96 +790,147 @@ def dimensionar(caliente: Stream, fria: Stream,
     est_t: FluidState = db.get_fluid_state(por_tubos.fluido, T_t_m, "C")
     est_s: FluidState = db.get_fluid_state(por_coraza.fluido, T_s_m, "C")
     metal = db.get_material(tubos.material)
+    R_fi = resistencia_ensuciamiento(por_tubos, metal.R_f)
+    R_fo = resistencia_ensuciamiento(por_coraza, metal.R_f)
+    n_corazas = 2 if coraza.tipo.upper() == "F" else 1   # TEMA F: 2 pasadas de coraza
 
     D_e = diametro_equivalente(tubos.P_T, tubos.D_o, tubos.layout)
     C_libre = tubos.P_T - tubos.D_o            # claro entre tubos [m]
     area_unit = math.pi * tubos.D_o * tubos.L  # area externa de 1 tubo [m2]
 
-    # Factores de ensuciamiento individuales por corriente (no duplicar el del
-    # metal): ver resistencia_ensuciamiento().
-    R_fi = resistencia_ensuciamiento(por_tubos, metal.R_f)
-    R_fo = resistencia_ensuciamiento(por_coraza, metal.R_f)
+    # --- 3-5. Lazo sobre U: U = U_calc(U) resuelto por biseccion -------------
+    # Por que biseccion y no iteracion directa: el area sale de A = q/(U·F·LMTD)
+    # y luego U depende de las velocidades que ese area impone, de modo que
+    # U_calc(U) ~ C·U^beta con beta < 1. La iteracion directa converge lento y
+    # su punto final depende de la semilla U_inicial (sobre todo en laminar).
+    # La ecuacion U_calc(U) - U = 0 tiene una unica raiz en un bracket amplio:
+    # resolverla por biseccion da el MISMO resultado con cualquier semilla y
+    # con un residuo numerico controlado.
+    estado: dict = {}
 
-    def _refinar_h(Re_t: float, Re_s: float):
-        """Refina T_w, phi_t y phi_s ANTES de evaluar U (punto fijo, 4 pasadas)."""
-        phi_t = phi_s = 1.0
-        for _ in range(4):
-            Nu_t, reg = nusselt_tubos(Re_t, est_t.Pr, tubos.D_i, tubos.L, phi_t)
-            h_i = Nu_t * est_t.k / tubos.D_i
-            h_o = nusselt_coraza(Re_s, est_s.Pr, phi_s) * est_s.k / D_e
-            h_io = h_i * tubos.D_i / tubos.D_o
-            T_w = (h_io * T_t_m + h_o * T_s_m) / (h_io + h_o)
-            phi_t = (est_t.mu / mu_pared(por_tubos.fluido, T_w)) ** 0.14
-            phi_s = (est_s.mu / mu_pared(por_coraza.fluido, T_w)) ** 0.14
-        # Ultimo (h_i, h_o) fue calculado con phi de la pasada previa: se
-        # reevalua una vez con el phi final para que h y phi sean consistentes.
-        Nu_t, reg = nusselt_tubos(Re_t, est_t.Pr, tubos.D_i, tubos.L, phi_t)
-        h_i = Nu_t * est_t.k / tubos.D_i
-        h_o = nusselt_coraza(Re_s, est_s.Pr, phi_s) * est_s.k / D_e
-        return h_i, h_o, phi_t, phi_s, reg
+    def U_de(U_trial: float) -> float:
+        """U_calc(U_trial): geometria -> Re, Nu -> h -> U, con phi de pared."""
+        A_t = q / (U_trial * F * dT_lm)
+        N_tt_f = A_t / area_unit
+        # La correlacion de conteo da el diametro del HAZ; la coraza se abre
+        # ademas en la holgura que exige el cabezal trasero (D_otl + holgura).
+        D_s_t = holgura_haz + 0.637 * math.sqrt(C_L / C_TP) * math.sqrt(
+            A_t * tubos.PR ** 2 * tubos.D_o / tubos.L)
 
-    # --- 3-5. Lazo iterativo sobre U ----------------------------------------
-    U = U_inicial
-    phi_t = phi_s = 1.0
-    h_i = h_o = Re_t = Re_s = v_t = v_s = N_tt_f = D_s = 0.0
-    regimen = ""
-    it = 0
-    convergio = False
-
-    for it in range(1, max_iter + 1):
-        # 3. Area, numero de tubos y diametro de coraza
-        A = q / (U * F * dT_lm)
-        N_tt_f = A / area_unit
-        # D_s despejado de N_tt = (pi/4)*(C_TP/C_L)*(D_s/P_T)^2 (equivale a
-        # la constante 0.637 = 2/pi del texto original)
-        D_s = (2.0 / math.pi) * math.sqrt(C_L / C_TP) * math.sqrt(
-            A * (tubos.PR ** 2) * tubos.D_o / tubos.L)
-
-        # 4a. Lado tubos: continuidad -> G_t -> Re
+        # 4a. Lado tubos: continuidad -> G_t -> Re -> Nu -> h_i
         a_t = N_tt_f * tubos.a_tubo / tubos.n_pasos      # area de flujo por paso
         G_t = por_tubos.m_dot / a_t                      # [kg/m2.s]
         v_t = G_t / est_t.rho
         Re_t = G_t * tubos.D_i / est_t.mu
 
-        # 4b. Lado coraza: area de flujo cruzado (por coraza/paso en TEMA F)
-        A_s = (D_s * C_libre * coraza.B / tubos.P_T) / n_corazas
+        # 4b. Lado coraza: area de flujo cruzado en el eje (por pasada en TEMA F)
+        A_s = (D_s_t * C_libre * coraza.B / tubos.P_T) / n_corazas
         G_s = por_coraza.m_dot / A_s
         v_s = G_s / est_s.rho
         Re_s = G_s * D_e / est_s.mu
 
-        # 5. h, phi (refinados) y nuevo U
-        h_i, h_o, phi_t, phi_s, regimen = _refinar_h(Re_t, Re_s)
+        # 5. Correccion por viscosidad de pared (lazo interno acotado y
+        #    determinista: se repite hasta que phi deja de moverse).
+        phi_t = phi_s = 1.0
+        Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tubos.D_i, tubos.L, phi_t)
+        Nu_s, regimen_s = nusselt_coraza(Re_s, est_s.Pr, phi_s, D_e, coraza.B)
+        h_i = h_o = 0.0
+        for _ in range(40):
+            Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tubos.D_i, tubos.L,
+                                          phi_t)
+            Nu_s, regimen_s = nusselt_coraza(Re_s, est_s.Pr, phi_s, D_e,
+                                             coraza.B)
+            h_i = Nu_t * est_t.k / tubos.D_i
+            h_o = Nu_s * est_s.k / D_e
+            h_io = h_i * tubos.D_i / tubos.D_o
+            T_w = (h_io * T_t_m + h_o * T_s_m) / (h_io + h_o)
+            phi_t_n = (est_t.mu / mu_pared(por_tubos.fluido, T_w)) ** 0.14
+            phi_s_n = (est_s.mu / mu_pared(por_coraza.fluido, T_w)) ** 0.14
+            if abs(phi_t_n - phi_t) < 1e-9 and abs(phi_s_n - phi_s) < 1e-9:
+                phi_t, phi_s = phi_t_n, phi_s_n
+                break
+            phi_t, phi_s = phi_t_n, phi_s_n
+
         U_new = coeficiente_global(h_i, h_o, tubos.D_i, tubos.D_o,
                                    metal.k_m, R_fi, R_fo)
         if not math.isfinite(U_new) or U_new <= 0.0:
-            raise ValueError(
-                "El coeficiente global calculado no es fisico "
-                f"(U = {U_new:.3e} W/m2.K). Revise geometria y caudales.")
-        error = abs(U_new - U) / U_new
-        # Sub-relajacion (0.7) tras 5 ciclos: estabilidad cerca de transiciones
-        U = 0.7 * U_new + 0.3 * U if it > 5 else U_new
-        if error < tol:
-            U = U_new
+            raise ErrorDiseno(
+                titulo="Coeficiente global no físico",
+                que_paso=f"El cálculo devolvió U = {U_new:.3e} W/m²·K.",
+                por_que="U es el inverso de una suma de resistencias térmicas "
+                        "positivas; no puede ser nulo, negativo ni infinito. "
+                        "Un valor así solo sale de geometría degenerada "
+                        "(área de flujo nula, diámetros iguales, etc.).",
+                solucion="Revise el espesor de pared del tubo (debe ser menor "
+                         "que el radio), el pitch y los caudales cargados.",
+                referencia="U = 1/Σ R_térmicas (Kern, cap. 7)",
+            )
+        estado.update(D_s=D_s_t, N_tt_f=N_tt_f, v_t=v_t, v_s=v_s,
+                      Re_t=Re_t, Re_s=Re_s, h_i=h_i, h_o=h_o,
+                      regimen=regimen, regimen_s=regimen_s)
+        return U_new
+
+    # Bracket de la raiz de R(U) = U_calc(U) - U  (R > 0 abajo, R < 0 arriba).
+    # El bracket es FIJO (no depende de U_inicial) para que el resultado
+    # convergido sea exactamente el mismo con cualquier semilla.
+    U_lo, U_hi = 1.0, 5.0e3
+    if U_de(U_lo) - U_lo < 0.0:
+        raise ErrorDiseno(
+            titulo="No existe un coeficiente global físico para este servicio",
+            que_paso="Incluso con U → 0 el área requerida no produce un "
+                     "coeficiente global coherente.",
+            por_que="La combinación de caudales, temperaturas y geometría impone "
+                    "condiciones extremas (velocidades ínfimas o Re fuera de "
+                    "todo rango) para las que el modelo de Kern no tiene "
+                    "solución.",
+            solucion="Aumente los caudales, reduzca la longitud del tubo o "
+                     "revise las temperaturas cargadas.",
+            referencia="Método de Kern (iteración sobre U)",
+        )
+    while U_de(U_hi) - U_hi > 0.0 and U_hi < 1.0e7:
+        U_hi *= 2.0
+
+    U = U_inicial
+    it = 0
+    convergio = False
+    for it in range(1, max_iter + 1):
+        U_med = 0.5 * (U_lo + U_hi)
+        R_med = U_de(U_med) - U_med
+        if R_med > 0.0:
+            U_lo = U_med
+        else:
+            U_hi = U_med
+        U = U_med
+        if (U_hi - U_lo) <= tol * max(U_med, 1.0):
             convergio = True
             break
 
     if not convergio:
-        raise ValueError(
-            f"La iteracion sobre U no convergio en {max_iter} ciclos "
-            f"(ultimo U = {U:.1f} W/m2.K).\n"
-            "   Pruebe otra semilla U_inicial o revise la geometria impuesta.")
+        raise ErrorDiseno(
+            titulo="La iteración sobre U no convergió",
+            que_paso=f"Tras {max_iter} ciclos el intervalo de búsqueda sigue "
+                     f"siendo [{U_lo:.1f}, {U_hi:.1f}] W/m²·K.",
+            por_que="La tolerancia pedida sobre U es más fina de lo que el "
+                    "modelo permite con este número de iteraciones.",
+            solucion="Aumente el máximo de iteraciones o relaje la tolerancia "
+                     "(el parámetro `tol`); revise también la geometría impuesta.",
+            referencia="Método de Kern (iteración sobre U)",
+        )
 
-    # --- 6. Cierre consistente con N_tt entero y calculo hidraulico ---------
+    # --- 6. Cierre: area final y conteo entero de tubos ---------------------
     A = q / (U * F * dT_lm)
     N_tt = max(int(math.ceil(A / area_unit)), tubos.n_pasos)
     if N_tt % tubos.n_pasos:                      # reparto equitativo por paso
-        N_tt += tubos.n_pasos - (N_tt % tubos.n_pasos)
+        N_tt += tubos.n_pasos - N_tt % tubos.n_pasos
     A_real = N_tt * area_unit
-    D_s = tubos.P_T * math.sqrt((4.0 / math.pi) * (C_L / C_TP) * N_tt)
     # floor + 1e-9 evita el truncamiento IEEE-754 (p. ej. 0.6/0.2 = 2.9999...)
     N_baffles = max(int(math.floor(tubos.L / coraza.B + 1e-9)) - 1, 0)
 
-    # Recalcular velocidades, Re, h, U y caidas de presion para el haz REAL:
+    # Cierre consistente con el HAZ REAL: con N_tt entero las velocidades y el
+    # U cambian, asi que se reevalua todo el estado con el haz instalado y el
+    # area requerida se recalcula con ese U (parche 5.2.2).
+    D_s = holgura_haz + tubos.P_T * math.sqrt(
+        (4.0 / math.pi) * (C_L / C_TP) * N_tt)
     a_t = N_tt * tubos.a_tubo / tubos.n_pasos
     G_t = por_tubos.m_dot / a_t
     v_t = G_t / est_t.rho
@@ -725,23 +941,38 @@ def dimensionar(caliente: Stream, fria: Stream,
     v_s = G_s / est_s.rho
     Re_s = G_s * D_e / est_s.mu
 
-    h_i, h_o, phi_t, phi_s, regimen = _refinar_h(Re_t, Re_s)
+    phi_t = phi_s = 1.0
+    h_i = h_o = 0.0
+    for _ in range(40):
+        Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tubos.D_i, tubos.L, phi_t)
+        Nu_s, regimen_s = nusselt_coraza(Re_s, est_s.Pr, phi_s, D_e, coraza.B)
+        h_i = Nu_t * est_t.k / tubos.D_i
+        h_o = Nu_s * est_s.k / D_e
+        h_io = h_i * tubos.D_i / tubos.D_o
+        T_w = (h_io * T_t_m + h_o * T_s_m) / (h_io + h_o)
+        phi_t_n = (est_t.mu / mu_pared(por_tubos.fluido, T_w)) ** 0.14
+        phi_s_n = (est_s.mu / mu_pared(por_coraza.fluido, T_w)) ** 0.14
+        if abs(phi_t_n - phi_t) < 1e-9 and abs(phi_s_n - phi_s) < 1e-9:
+            phi_t, phi_s = phi_t_n, phi_s_n
+            break
+        phi_t, phi_s = phi_t_n, phi_s_n
     U = coeficiente_global(h_i, h_o, tubos.D_i, tubos.D_o, metal.k_m, R_fi, R_fo)
 
+    # Caídas de presión acopladas tubos/coraza con el haz real (Kern, cap. 7).
     dp_t, f_t = caida_presion_tubos(
         Re_t, est_t.rho, v_t, tubos.L, tubos.D_i, tubos.n_pasos, phi_t,
         metal.epsilon)
     dp_s, f_s = caida_presion_coraza(
         Re_s, est_s.rho, G_s, D_s, D_e, N_baffles, phi_s, n_corazas)
 
-    # Area requerida con el U del haz instalado (coherente con A_real)
+    # Area requerida con el U del haz instalado (coherente con A_real).
     A = q / (U * F * dT_lm)
     sobre_area = 100.0 * (A_real - A) / A
     if sobre_area < 0.0:
         adv.append(
             f"Tras redondear a {N_tt} tubos enteros la velocidad cae y el U "
-            f"final deja un deficit de area de {-sobre_area:.1f} %. Aumente L "
-            "o el numero de tubos.")
+            f"final deja un déficit de área de {-sobre_area:.1f} %. Aumente L "
+            "o el número de tubos.")
 
     # --- 7. Sanity checks hidrodinamicos y de fabricacion -------------------
     if v_t < V_TUBO_MIN:
@@ -765,12 +996,28 @@ def dimensionar(caliente: Stream, fria: Stream,
             f"Velocidad en coraza excesiva: {v_s:.2f} m/s (> {V_CORAZA_MAX} m/s). "
             "Riesgo de vibracion inducida por flujo (TEMA)."
         )
-    if regimen != "turbulento":
+
+    # --- Regimen de flujo e incertidumbre de los coeficientes ---------------
+    for lado, regimen_x, Re_x in (("tubos", regimen, Re_t),
+                                  ("coraza", regimen_s, Re_s)):
+        if regimen_x == "turbulento":
+            continue
         adv.append(
-            f"Flujo en tubos en regimen {regimen} (Re = {Re_t:,.0f}). "
-            "La transferencia es ineficiente y la correlacion pierde precision."
+            f"Flujo en {lado} en régimen {regimen_x} (Re = {Re_x:,.0f}). "
+            "Las correlaciones de Kern están calibradas para flujo turbulento: "
+            f"en {regimen_x} la incertidumbre de los coeficientes puede llegar a "
+            f"±{INCERTIDUMBRE_U[regimen_x]:.0f} % sobre U."
         )
-    if not RE_KERN_MIN <= Re_s <= RE_KERN_MAX:
+    banda = max(INCERTIDUMBRE_U[regimen], INCERTIDUMBRE_U[regimen_s])
+    if banda > 15.0:
+        adv.append(
+            f"Resultado U = {U:,.1f} W/m²·K con banda de incertidumbre estimada "
+            f"de ±{banda:.0f} % (régimen tubos: {regimen}, coraza: {regimen_s}). "
+            "En laminar/transición el método de Kern es indicativo: contraste "
+            "con Bell-Delaware, ε-NTU o datos de servicio antes de fabricar."
+        )
+
+    if not RE_KERN_MIN <= Re_s <= RE_KERN_MAX and regimen_s == "turbulento":
         adv.append(
             f"Re de coraza = {Re_s:,.0f} fuera del rango de validez de la "
             f"correlacion de Kern ({RE_KERN_MIN:,.0f} - {RE_KERN_MAX:,.0f}). "
@@ -778,13 +1025,20 @@ def dimensionar(caliente: Stream, fria: Stream,
         )
     for flu, T_pico in ((caliente.fluido, caliente.T_in),
                         (fria.fluido, T_c_out)):
+        aviso = chequeo_cercania_fase(flu, T_pico)
+        if aviso:
+            adv.append(aviso)
         aviso = chequeo_saturacion(flu, T_pico)
         if aviso:
             adv.append(aviso)
+
+    # --- Tipos de coraza TEMA con limitaciones del modelo monofasico --------
+    adv.extend(aviso_tipo_carcasa(coraza.tipo))
+
     if not (D_s / 5.0) <= coraza.B <= D_s:
         adv.append(
             f"Espaciado de baffles B = {coraza.B:.3f} m fuera del rango TEMA "
-            f"[D_s/5 = {D_s/5:.3f} m ; D_s = {D_s:.3f} m]."
+            f"[D_s/5 = {D_s/5:.3f} m ; D_s = {D_s:.3f} m] (RCB-4.5.1)."
         )
     if tubos.L / D_s > 15.0 or tubos.L / D_s < 3.0:
         adv.append(
@@ -798,8 +1052,46 @@ def dimensionar(caliente: Stream, fria: Stream,
         T_h_out=T_h_out, T_c_out=T_c_out, h_i=h_i, h_o=h_o,
         Re_t=Re_t, Re_s=Re_s, v_t=v_t, v_s=v_s, D_e=D_e,
         f_t=f_t, f_s=f_s, dp_t=dp_t, dp_s=dp_s,
-        iteraciones=it, regimen_tubo=regimen, advertencias=adv,
+        iteraciones=it, regimen_tubo=regimen, regimen_coraza=regimen_s,
+        advertencias=adv,
     )
+
+
+def aviso_tipo_carcasa(tipo: str) -> List[str]:
+    """
+    Advertencias propias de cada tipo de coraza TEMA (Fig. N-1.2) cuando el
+    modelo monofasico de Kern solo lo aproxima.
+    """
+    tipo = tipo.upper()
+    avisos = []
+    if tipo == "F":
+        avisos.append(
+            "Coraza tipo F (dos pasadas con deflector longitudinal): el "
+            "deflector longitudinal debe ir sellado o soldado; la caída de "
+            "presión del lado coraza será unas 8 veces la de una coraza E."
+        )
+    elif tipo in ("G", "H", "J"):
+        avisos.append(
+            f"Coraza tipo {tipo} (flujo partido/dividido): Kern no calibró sus "
+            "correlaciones para este patrón. La corrección F = 1 es "
+            "conservadora y la caída de presión es mucho menor que en una E; "
+            "para un diseño real use análisis de corrientes (Bell-Delaware)."
+        )
+    elif tipo == "K":
+        avisos.append(
+            "Coraza tipo K (caldera): el cálculo es monofásico. Para servicio "
+            "de ebullición (recalentador de caldera) el haz se dimensiona con "
+            "los métodos de vaporización (Kern cap. 9 / Bell-Delaware), y el "
+            "diámetro de la caldera depende de la separación de vapor, no del "
+            "haz. Los resultados aquí son solo la parte sensible."
+        )
+    elif tipo == "X":
+        avisos.append(
+            "Coraza tipo X (flujo cruzado puro): no hay deflectores "
+            "transversales, solo placas soporte. La correlación de coraza de "
+            "Kern es para baffles segmentados; h_o es una aproximación."
+        )
+    return avisos
 
 
 # =============================================================================

@@ -1,134 +1,179 @@
 # Diseño de Intercambiadores de Calor de Tubos y Coraza
 
-Software educativo y profesional de alta fidelidad para el diseño térmico (**Método de Kern**) y mecánico (**estándar TEMA Clase C / ASME Sección VIII Div. 1**) de intercambiadores de calor de tubos y coraza, con interfaz gráfica interactiva, resolución termo-hidráulica acoplada y generación de planos paramétricos acotados.
+Software educativo de nivel universitario para el diseño térmico (**Método de
+Kern**) y mecánico (**estándar TEMA Clase C**) de intercambiadores de calor de
+tubos y coraza, con interfaz gráfica y generación de planos acotados.
 
 ---
 
 ## Cómo ejecutarlo
 
-**Doble clic en `ejecutar.bat`** (Windows), o desde una terminal en la carpeta del proyecto:
+**Doble clic en `ejecutar.bat`** (Windows), o desde una terminal en la carpeta
+del proyecto:
 
-```bash
-python src/gui/app.py
+```
+py src/gui/app.py
 ```
 
-No requiere dependencias externas para la ejecución de la aplicación: usa la librería estándar de Python 3 (`tkinter`).
+No requiere instalar dependencias: usa solo la librería estándar de Python 3
+(`tkinter`). No necesita internet.
 
-Para comprobar la integridad numérica y ejecución completa de los casos de prueba:
+Para comprobar que todo funciona correctamente:
 
-```bash
-python verificar.py
+```
+py verificar.py
 ```
 
-Ese comando ejecuta las **56 pruebas formales** sobre las cuatro capas del sistema y certifica `RESULTADO: TODO CORRECTO  (56 pruebas superadas)`.
+Ese comando ejecuta 117 pruebas sobre las cuatro fases y termina diciendo
+`TODO CORRECTO` o enumerando las fallas.
 
 ---
 
-## Arquitectura del Software
+## Qué hace
 
-El sistema sigue una arquitectura Modelo-Vista-Controlador (MVC) desacoplada con 4 pilares fundamentales:
+| Función | Descripción |
+|---|---|
+| **Sizing** (F5) | Usted fija la geometría del tubo; el programa itera sobre el coeficiente global *U* hasta hallar el área, el número de tubos y el diámetro de coraza necesarios. |
+| **Rating** (F6) | Usted ya tiene un equipo (N_tt y D_s conocidos); el programa itera sobre las temperaturas de salida para predecir el calor que transfiere realmente. |
+| **Diseño mecánico** | A partir del resultado térmico calcula espesores, espejos, deflectores, varillas tensores, bridas, pernos y boquillas según TEMA Clase C, con las tablas reales del estándar (CB-3.1.3, RCB-4.3, CB-4.4.1, RCB-4.5.2, CB-4.7.1, C-7.1.1, C-11.1, RCB-4.6.1). |
+| **Planos** | Cinco vistas paramétricas acotadas: corte longitudinal, distribución de tubos, placa deflectora, cabezal y **catálogo TEMA (Fig. N-1.2)**. El corte longitudinal y el cabezal se dibujan con el diagrama del TIPO elegido (A/B/C/D/N, E/F/G/H/J/K/X, L/M/N/P/S/T/U/W). Clic sobre cualquier pieza para ver sus cotas en milímetros. |
+
+---
+
+## Estructura del proyecto
 
 ```
 src/
-  core/           [Pilar 1] Base de datos termofísica de alta fidelidad
-    thermo_data.py          Propiedades dependientes de la temperatura (cp, mu, k, rho = f(T)),
-                            ventanas de fase, ensuciamiento estandarizado TEMA (R_f) y metales.
-  thermo/         [Pilar 2] Motor de cálculo térmico e hidráulico (Método de Kern)
-    sizing.py               dimensionar() — Dimensionamiento iterativo sobre U acoplado con dp_t y dp_s.
-    rating.py               evaluar()     — Evaluación fuera de diseño iterando sobre temperaturas de salida.
-  mechanical/     [Pilar 3] Dimensionamiento mecánico y fabricación (TEMA Clase C / ASME UG-27)
-    design.py               disenar_mecanico() — Espesores de carcasa, espejos, baffles, bridas y boquillas.
-  gui/            [Pilar 4] Interfaz gráfica de usuario (tkinter/ttk)
-    app.py                  Ventana principal, barra de menús, pestañas de resultados y diagnóstico.
-    controller.py           Orquestador central entre eventos de interfaz y motores de cálculo.
-    widgets.py              Componentes UI con validación de entradas numéricas, tooltips y tablas.
-    drawings.py             Generación vectorial de esquemas paramétricos acotados sobre Canvas.
-    io_state.py             Serialización y deserialización de proyectos en formato .he (JSON).
-ejemplos/         Casos de estudio industriales y de benchmark completamente validados.
-verificar.py      Suite de pruebas unitarias, integración, benchmarks y barridos de robustez.
-ejecutar.bat      Lanzador rápido para entornos Windows.
+  core/        Base de datos termofísica — 10 fluidos, 5 materiales
+    thermo_data.py          ThermoDatabase: cp, mu, k, rho = f(T)
+  thermo/      Cálculo térmico (Método de Kern)
+    sizing.py               dimensionar()  — itera sobre U
+    rating.py               evaluar()      — itera sobre T_out
+  mechanical/  Diseño mecánico (TEMA Clase C)
+    design.py               disenar_mecanico() — dimensiones de fabricación
+  gui/         Interfaz gráfica (tkinter/ttk)
+    app.py                  Ventana, menú y pestañas
+    controller.py           Único puente entre la vista y los módulos de cálculo
+    widgets.py              Campos validados, tooltips, tablas
+    drawings.py             Vistas paramétricas sobre Canvas
+    io_state.py             Proyectos .he (JSON)
+ejemplos/      5 proyectos .he verificados
+verificar.py   Suite de verificación de las 4 fases
+ejecutar.bat   Lanzador para Windows
 ```
+
+**Arquitectura MVC estricta:** la GUI no contiene ni una línea de física. Todo
+cálculo vive en `core`, `thermo` y `mechanical`; `controller.py` es el único
+punto de contacto. Hasta las ventanas de velocidad recomendada que la interfaz
+resalta en ámbar se importan desde `src/thermo/sizing.py`, para que el
+resaltado nunca pueda contradecir al motor de cálculo.
 
 ---
 
-## Fundamento de Cálculo (Método Canónico de Kern y Estándares TEMA)
+## Ejemplos incluidos
 
-### 1. Lado Coraza
-- **Área transversal de flujo en el eje:** $A_s = \frac{D_s \cdot C \cdot B}{P_T \cdot N_{corazas}}$ (Kern Eq. 7.1, con claro $C = P_T - d_o$).
-- **Diámetro equivalente ($D_e$):**
-  - Arreglo cuadrado (45° o 90°): $D_e = \frac{4 (P_T^2 - \frac{\pi d_o^2}{4})}{\pi d_o}$ (Kern Eq. 7.2).
-  - Arreglo triangular (30° o 60°): $D_e = \frac{4 (\frac{\sqrt{3}}{4} P_T^2 - \frac{\pi d_o^2}{8})}{\frac{\pi d_o}{2}}$ (Kern Eq. 7.3).
-- **Velocidad másica y Reynolds:** $G_s = \frac{\dot{m}_s}{A_s}$, $\quad Re_s = \frac{D_e G_s}{\mu_s}$.
-- **Convección:** $Nu_s = 0.36 \cdot Re_s^{0.55} \cdot Pr_s^{1/3} \cdot \left(\frac{\mu}{\mu_w}\right)^{0.14}$ (Kern Eq. 7.4).
-- **Caída de presión coraza:** $\Delta p_s = \frac{N_{corazas} \cdot f_s \cdot G_s^2 \cdot D_s \cdot (N_b + 1)}{2 \rho_s D_e \phi_s}$ (Kern Eq. 7.44).
+Se abren desde **File → Abrir ejemplo validado** y se calculan solos. Los cinco
+convergen sin una sola advertencia:
 
-### 2. Lado Tubos
-- **Área de flujo por paso:** $a_t = \frac{N_{tt} \cdot \pi d_i^2}{4 \cdot n_{pasos}}$, $\quad u_m = \frac{\dot{m}_t}{\rho_t a_t}$.
-- **Convección interna ($Nu_t$):**
-  - Laminar ($Re < 2100$): $Nu = \max\left(1.86 \left(Re \cdot Pr \cdot \frac{d_i}{L}\right)^{1/3} \phi_t, 3.66\right)$ (Kern Eq. 6.2).
-  - Turbulento ($Re \ge 10000$): $Nu = 0.027 \cdot Re^{0.8} \cdot Pr^{1/3} \cdot \phi_t$ (Kern Eq. 6.3).
-  - Transición ($2100 \le Re < 10000$): Interpolación monótona continua garantizando continuidad $C^0$.
-- **Caída de presión total:** $\Delta p_t = \Delta p_L + \Delta p_r$ (Kern Eq. 7.43 y 7.45/7.46):
-  $$\Delta p_t = n_{pasos} \cdot f_t \left(\frac{L}{d_i}\right) \frac{\rho_t u_m^2}{2 \phi_t^m} + 4 n_{pasos} \left(\frac{\rho_t u_m^2}{2}\right)$$
-
-### 3. Coeficiente Global y Balances
-- **Balance térmico:** $q = \dot{m}_h cp_h (T_{h,in} - T_{h,out}) = \dot{m}_c cp_c (T_{c,out} - T_{c,in})$ (Kern Cap. 5).
-- **LMTD:** $\Delta T_{lm} = \frac{\Delta T_1 - \Delta T_2}{\ln(\Delta T_1 / \Delta T_2)}$ (Kern Eq. 5.14). Con remoción de singularidad $0/0$ cuando $R = 1$.
-- **Factor de corrección $F$:** Bowman-Mueller-Nagle para configuraciones 1-2 y extensión a $N_s$ corazas en serie (TEMA F).
-- **Resistencia global:** $\frac{1}{U_o} = \frac{1}{h_o} + R_{f,o} + \frac{d_o \ln(d_o/d_i)}{2 k_w} + \frac{d_o}{d_i} R_{f,i} + \frac{d_o}{d_i h_i}$.
+| Proyecto | Carga | Tubos | D_s |
+|---|---|---|---|
+| Agua–agua (caso base) | 5020 kW | 502 | 642 mm |
+| Enfriador de etanol | 660 kW | 304 | 551 mm |
+| Enfriador de etilenglicol | 1375 kW | 246 | 485 mm |
+| Enfriador de benceno | 568 kW | 130 | 354 mm |
+| Enfriador de amoniaco líquido | 1931 kW | 648 | 748 mm |
 
 ---
 
-## Registro de Estabilidad Numérica (Los 7 Conflictos Resueltos)
+## Sobre los mensajes de error
 
-Durante las fases de auditoría y consolidación de parches termohidráulicos, se identificaron y solventaron 7 inconsistencias críticas para asegurar estabilidad numérica estricta:
+Cuando el programa rechaza un diseño **no es una falla del software**: es el
+modelo físico o la norma TEMA haciendo su trabajo. El rechazo llega siempre
+como una ventana emergente estructurada en cuatro preguntas — **QUÉ PASÓ**
+(el hecho, con números), **POR QUÉ** (el principio físico o la cláusula de la
+norma), **CÓMO LO SOLUCIONO** (la acción concreta sobre el formulario) y la
+**REFERENCIA** — y la aplicación sigue corriendo. Casos típicos:
 
-1. **Corrección de Indentación y Sintaxis en Caídas de Presión:**
-   Se corrigió el error de sangría en la definición de `exponente_m` dentro de `caida_presion_tubos`, evitando excepciones de sintaxis `IndentationError` en tiempo de carga.
-2. **Orden de Definición Previa de `n_corazas`:**
-   En `sizing.py`, el parche original utilizaba `n_corazas` en el cálculo del factor $F$ antes de haberlo declarado. Se reestructuró la función para definir $n_{corazas} = 2$ (para carcasas tipo F) en la etapa de validación geométrica inicial.
-3. **Interpolación Continua de Nusselt en Régimen de Transición:**
-   Se comprobó numéricamente que la formulación acotada con `max(Hausen, Nu_lam)` generaba discontinuidades de $+6\%$ en $Re=2100$ y $-5\%$ en $Re=10000$. Se implementó una interpolación lineal ponderada que asegura continuidad $C^0$ con un salto relativo medido $\sim 1.6 \times 10^{-7}$.
-4. **Integración Estandarizada de Ensuciamiento TEMA (`db.get_fouling`):**
-   Se implementó la jerarquía de ensuciamiento con orden de precedencia estricto: (1) Valor asignado por el usuario en `Stream.R_f`, (2) Tabla TEMA RGP-T-2.4 por fluido en `thermo_data.py`, (3) Respaldo del 50% de la resistencia del material sólido.
-5. **Recálculo Consistente del Área Requerida con el Haz Entero:**
-   Al discretizar al entero superior de tubos $N_{tt}$ múltiplo de $n_{pasos}$, la velocidad real varía ligeramente. El código recalcula $U$, $\Delta p$ y el área requerida $A = q / (U F \Delta T_{lm})$ con el $U$ del haz instalado, reportando el porcentaje de sobre-área exacto y advirtiendo cualquier déficit.
-6. **Estandarización de Rating para Corazas TEMA F:**
-   Se homogeneizó el módulo `rating.py` con `sizing.py`, incorporando la propiedad `n_corazas` y el factor de división del área de flujo transversal para carcasas TEMA F, así como el uso de ensuciamientos individuales por corriente (`resistencia_ensuciamiento`).
-7. **Ajuste de Criterios TEMA en Boquillas Sch-40:**
-   Se corrigió el límite de vibración en boquillas según TEMA RCB-4.61 ($\rho V^2 \le 1500 \text{ lb}_m/(\text{ft}\cdot\text{s}^2) = 2232.25 \text{ Pa}$, en sustitución de 3348.6 Pa). En `verificar.py`, el aviso de baja velocidad resultante de la discretización a tubería Sch-40 comercial fue tipificado como advertencia informativa.
+- *Violación de la 2ª Ley* — el fluido «caliente» entra más frío que el «frío».
+- *Cruce de temperaturas* — la carga pedida es imposible en contracorriente.
+- *Fluido fuera de su ventana de validez* — se valida **cada punto de
+  temperatura** (entradas y salidas), no solo la media: p. ej. etanol a 95 °C
+  se rechaza aunque su media quede dentro del rango 0–75 °C.
+- *Agua por encima de 100 °C* — el agua líquida termina en su ebullición a
+  1 atm; el modelo es monofásico y no cubre servicios presurizados.
+- *Balance mal planteado* — debe dejarse vacía exactamente una temperatura de
+  salida; es la incógnita de q = ṁ·cp·ΔT.
+- *Empaque, boquillas o luz sin soporte fuera de TEMA* — el diseño térmico
+  converge pero no es fabricable tal cual.
 
----
-
-## Resultados de Validación y Certificación
-
-- **Suite de Pruebas Automatizadas:** **56 / 56 pruebas aprobadas (100% éxito)**.
-- **Cierre Térmico:** Balance térmico de energía cerrado con error relativo $< 0.02\%$ (residual $|q - UAF\Delta T_{lm}| = 97.1 \text{ W}$ en carga de $610.6 \text{ kW}$).
-- **Singularidad LMTD:** Comportamiento asintótico exacto en $R=1$ evaluado en $40.0000^\circ\text{C}$ sin indeterminaciones $0/0$.
-- **Robustez Global:** 216 combinaciones exploradas en barrido paramétrico con cero fallos no controlados.
+En un barrido de 216 combinaciones de fluidos, caudales, longitudes y pasos,
+**ninguna produce un fallo no controlado**; 54 % entrega un diseño completo y
+el resto son rechazos razonados como los anteriores.
 
 ---
 
-## Guía de Uso Rápido
+## Tipos TEMA soportados
 
-### Ejecución de la Interfaz Gráfica
-```bash
-python src/gui/app.py
-```
+El estándar TEMA (Fig. N-1.2, incluida en los PDF de esta carpeta) define la
+designación de tres letras **[cabezal frontal][coraza][cabezal trasero]**.
+Este programa soporta **todos** los tipos:
 
-### Ejecución de Cálculos en Modo Terminal (Scripts Independientes)
-```bash
-# Probar Sizing térmico interactivo
-python src/thermo/sizing.py
+| Posición | Tipos |
+|---|---|
+| Cabezal frontal | **A** canal + cubierta · **B** bonete · **C** canal integral con espejo (haz extraíble) · **D** cierre especial de alta presión · **N** canal integral con espejo (espejo fijo) |
+| Coraza | **E** una pasada · **F** dos pasadas con deflector longitudinal · **G** flujo partido · **H** doble partido · **J** dividido · **K** caldera · **X** flujo cruzado |
+| Cabezal trasero | **L/M/N** espejo fijo · **P** flotante empaquetado · **S** flotante con anillo de retención · **T** pull-through · **U** haz en U · **W** espejo flotante sellado |
 
-# Probar Rating térmico
-python src/thermo/rating.py
+La vista **5 · Catálogo TEMA (Fig. N-1.2)** de la pestaña Drawing reproduce el
+diagrama completo del estándar con la selección actual resaltada; las vistas 1
+y 4 dibujan el equipo con el símbolo correspondiente al tipo elegido.
 
-# Probar Diseño mecánico TEMA Clase C
-python src/mechanical/design.py
-```
+---
 
-### Ejecución de la Batería de Pruebas de Verificación
-```bash
-python verificar.py
-```
+## Régimen de flujo e incertidumbre de los coeficientes
+
+Las correlaciones de Kern están calibradas para flujo **turbulento**. Cuando el
+cálculo cae en régimen laminar (Re < 2100) o de transición, el programa:
+
+1. usa las ramas adecuadas de cada correlación (laminar de Kern con
+   `Nu = 1.72·(Re·Pr·D_e/L_b)^1/3` en coraza, Sieder-Tate en tubos);
+2. resuelve el lazo de *U* por **bisección con bracket fijo**, de modo que el
+   resultado **no depende de la semilla U inicial** ni oscila entre corridas;
+3. señala el régimen en la tabla hidráulica y reporta una **banda de
+   incertidumbre estimada** sobre *U* (±25 % en transición, ±40 % en laminar).
+
+En esos casos el resultado es indicativo: contrástelo con Bell–Delaware,
+ε-NTU o datos de servicio antes de fabricar.
+
+---
+
+## El espaciado de baffles y el botón «½·D_s»
+
+El espaciado *B* es un **dato de entrada** del cálculo térmico, pero su ventana
+válida (D_s/5 ≤ B ≤ D_s) depende de D_s, que es un **resultado**. Ese lazo se
+cierra a mano en dos pasadas: calcule con un *B* tentativo, pulse el botón
+**½·D_s** junto al campo, y recalcule con F5.
+
+---
+
+## Alcance y limitaciones
+
+- **Sin cambio de fase.** Todas las correlaciones son para líquidos y gases
+  monofásicos. No modela condensadores ni evaporadores (la coraza K se calcula
+  solo en su parte sensible).
+- **Caída de presión (Δp): no implementada.** El panel *Hydraulic Design* la
+  muestra como «reservado», según el alcance definido para esta versión. Sí
+  reporta velocidades, Reynolds, régimen y diámetro equivalente, que permiten
+  verificar las ventanas recomendadas por TEMA/Kern.
+- **Conteo de tubos.** El sizing usa la correlación de Serth (con C_L y C_TP),
+  reservando además la holgura haz–coraza del cabezal trasero elegido
+  (0.011 m en espejo fijo … 0.092 m en cabezal T), y el módulo mecánico
+  verifica el empaque por área sobre D_otl. Son dos estimaciones distintas;
+  discrepancias menores al 5 % se reportan como advertencia (constante
+  `TOL_EMPAQUE` en `design.py`).
+- La base termofísica cubre cada fluido solo dentro de su ventana de validez
+  declarada, visible bajo cada menú desplegable en la pestaña *Design*. El
+  agua líquida termina en **100 °C** (ebullición a 1 atm).
+- Las tablas mecánicas provienen de los PDF incluidos en esta carpeta
+  (TEMA 10.ª ed., Sección 5 «Mechanical Standards TEMA Class R C B»); los
+  diagramas de tipos siguen la Figura N-1.2.

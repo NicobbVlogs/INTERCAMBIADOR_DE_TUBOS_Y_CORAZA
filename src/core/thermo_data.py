@@ -34,8 +34,11 @@ FUENTES DE LOS AJUSTES
                                         (8a ed.) y correlaciones tipo DIPPR.
 * Amoniaco liquido saturado ........... ASHRAE / Perry's (liquido en equilibrio).
 Los polinomios y las correlaciones de viscosidad fueron ajustados por minimos
-cuadrados a esas tablas; el error maximo dentro del rango declarado es < 2 %
-(tipicamente < 0.5 %). FUERA DEL RANGO SE LANZA ValueError: la extrapolacion de
+cuadrados a esas tablas; en rho, cp y k el error dentro del rango declarado es
+< 2 % (tipicamente < 0.5 %), mientras que la viscosidad - la propiedad mas
+sensible a la fuente tabulada - puede desviarse hasta ~5 % en alcoholes y
+glicol y ~20 % en amoniaco liquido (ver la validacion cuantificada en
+informe_propiedades.pdf). FUERA DEL RANGO SE LANZA ValueError: la extrapolacion de
 una correlacion empirica NO es fisica.
 """
 
@@ -188,9 +191,11 @@ class _FluidDef:
 
 _FLUIDS: Dict[str, _FluidDef] = {
     "agua": _FluidDef(
-        "Agua", "liquido", 273.15, 453.15,
-        "Liquido saturado/comprimido. A 1 atm hierve a 100 C: por encima de esa "
-        "temperatura se requiere presion (IAPWS valido hasta 180 C en este ajuste).",
+        "Agua", "liquido", 273.15, 373.15,
+        "Liquido a 1 atm: hierve exactamente a 100 C. Este software no modela "
+        "presion de operacion ni cambio de fase, por lo que la ventana de agua "
+        "liquida TERMINA en 100 C (elegido por el usuario; el ajuste IAPWS "
+        "subyacente era valido hasta 180 C pero exigiria presurizar el equipo).",
         lambda T, P: _poly(T, 373.15, _W_RHO),
         lambda T, P: _poly(T, 373.15, _W_CP),
         lambda T, P: _poly(T, 373.15, _W_K),
@@ -418,15 +423,11 @@ class ThermoDatabase:
     def get_limits(self, name: str, unit: str = "K") -> Tuple[float, float]:
         """Ventana de validez (T_min, T_max) del fluido, en la unidad pedida."""
         _, f = self._resolve_fluid(name)
-        u = _norm(unit).replace("\u00b0", "").replace("deg", "").strip()
-        if u in ("k", "kelvin"):
-            return (f.T_min, f.T_max)
-        if u in ("c", "celsius", "centigrados"):
+        if _norm(unit).startswith("c"):
             return (f.T_min - 273.15, f.T_max - 273.15)
-        if u in ("f", "fahrenheit"):
-            return ((f.T_min - 273.15) * 9.0 / 5.0 + 32.0,
-                    (f.T_max - 273.15) * 9.0 / 5.0 + 32.0)
-        raise ValueError(f"Unidad de temperatura '{unit}' no reconocida. Use 'K', 'C' o 'F'.")
+        if _norm(unit).startswith("f"):
+            return ((f.T_min - 273.15) * 9 / 5 + 32, (f.T_max - 273.15) * 9 / 5 + 32)
+        return (f.T_min, f.T_max)
 
     def get_fouling(self, name: str) -> float:
         """Resistencia de ensuciamiento tipica TEMA del fluido [m2.K/W] (parche 5.1)."""

@@ -15,8 +15,13 @@ from typing import Dict, List, Optional, Sequence
 
 COLOR_OK = "#ffffff"
 COLOR_ERROR = "#ffd1d1"
-COLOR_FONDO = "#f4f6f8"
-COLOR_TITULO = "#1f3b57"
+# --- Paleta de la interfaz (tonalidades moradas) ------------------------------
+COLOR_FONDO = "#f6f2fb"     # lavanda muy claro (fondo general)
+COLOR_TITULO = "#5e2b8c"    # morado profundo (títulos y rótulos)
+COLOR_ACENTO = "#7e57c2"    # morado de acento (botones, encabezados de tabla)
+COLOR_SECCION = "#ede7f6"   # morado pálido (filas de sección de tablas)
+COLOR_ALTERNA = "#faf7ff"   # filas alternas muy suaves
+COLOR_NOTA = "#6d5b95"      # textos secundarios
 
 
 class CampoInvalido(ValueError):
@@ -283,21 +288,34 @@ def tabla_resultados(parent, altura: int = 12) -> ttk.Treeview:
     cols = ("param", "simbolo", "valor", "unidad")
     tree = ttk.Treeview(parent, columns=cols, show="headings", height=altura)
     for col, titulo, ancho, anchor in (
-            ("param", "Parámetro", 230, "w"),
-            ("simbolo", "Símbolo", 70, "center"),
-            ("valor", "Valor", 110, "e"),
-            ("unidad", "Unidad", 80, "w")):
+            ("param", "Parámetro", 215, "w"),
+            ("simbolo", "Símbolo", 62, "center"),
+            ("valor", "Valor", 150, "e"),
+            ("unidad", "Unidad", 72, "w")):
         tree.heading(col, text=titulo)
         tree.column(col, width=ancho, anchor=anchor, stretch=(col == "param"))
     tree.tag_configure("alerta", background="#fff3cd")
-    tree.tag_configure("titulo", background="#e8eef4", font=("Segoe UI", 9, "bold"))
+    tree.tag_configure("titulo", background=COLOR_SECCION,
+                       foreground=COLOR_TITULO,
+                       font=("Segoe UI", 9, "bold"))
+    tree.tag_configure("alterna", background=COLOR_ALTERNA)
     return tree
 
 
 def llenar_tabla(tree: ttk.Treeview, filas: Sequence[Sequence[object]]) -> None:
-    """filas = [(param, simbolo, valor, unidad[, tag]), ...]"""
+    """filas = [(param, simbolo, valor, unidad[, tag]), ...]
+
+    Las filas sin marca llevan sombreado alternado (tag «alterna») para que la
+    vista sea más cómoda de leer.
+    """
     tree.delete(*tree.get_children())
+    alterna = False
     for fila in filas:
         tag = fila[4] if len(fila) > 4 else ""
+        if tag:
+            alterna = False            # una fila de seención reinicia el ciclo
+        else:
+            tag = "alterna" if alterna else ""
+            alterna = not alterna
         tree.insert("", "end", values=tuple(fila[:4]),
                     tags=(tag,) if tag else ())
