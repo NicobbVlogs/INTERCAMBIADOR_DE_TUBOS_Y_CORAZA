@@ -1,0 +1,7 @@
+# Archivos que no se suben al repositorio (issue #1: binarios generados)
+__pycache__/
+*.py[cod]
+*.pdf
+
+# Carpeta local de documentos y PDFs (no son fuente del proyecto)
+COSAS PDF Y ARCHIVOS/
