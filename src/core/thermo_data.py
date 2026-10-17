@@ -34,8 +34,11 @@ FUENTES DE LOS AJUSTES
                                         (8a ed.) y correlaciones tipo DIPPR.
 * Amoniaco liquido saturado ........... ASHRAE / Perry's (liquido en equilibrio).
 Los polinomios y las correlaciones de viscosidad fueron ajustados por minimos
-cuadrados a esas tablas; el error maximo dentro del rango declarado es < 2 %
-(tipicamente < 0.5 %). FUERA DEL RANGO SE LANZA ValueError: la extrapolacion de
+cuadrados a esas tablas; en rho, cp y k el error dentro del rango declarado es
+< 2 % (tipicamente < 0.5 %), mientras que la viscosidad - la propiedad mas
+sensible a la fuente tabulada - puede desviarse hasta ~5 % en alcoholes y
+glicol y ~20 % en amoniaco liquido (ver la validacion cuantificada en
+informe_propiedades.pdf). FUERA DEL RANGO SE LANZA ValueError: la extrapolacion de
 una correlacion empirica NO es fisica.
 """
 
@@ -188,9 +191,11 @@ class _FluidDef:
 
 _FLUIDS: Dict[str, _FluidDef] = {
     "agua": _FluidDef(
-        "Agua", "liquido", 273.15, 453.15,
-        "Liquido saturado/comprimido. A 1 atm hierve a 100 C: por encima de esa "
-        "temperatura se requiere presion (IAPWS valido hasta 180 C en este ajuste).",
+        "Agua", "liquido", 273.15, 373.15,
+        "Liquido a 1 atm: hierve exactamente a 100 C. Este software no modela "
+        "presion de operacion ni cambio de fase, por lo que la ventana de agua "
+        "liquida TERMINA en 100 C (elegido por el usuario; el ajuste IAPWS "
+        "subyacente era valido hasta 180 C pero exigiria presurizar el equipo).",
         lambda T, P: _poly(T, 373.15, _W_RHO),
         lambda T, P: _poly(T, 373.15, _W_CP),
         lambda T, P: _poly(T, 373.15, _W_K),

@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
+import time
 import traceback
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -29,9 +31,11 @@ if __package__ in (None, ""):                 # ejecución directa del archivo
 
 from src.gui import controller as ctrl
 from src.gui import drawings, io_state
-from src.gui.widgets import (COLOR_FONDO, COLOR_TITULO, CampoInvalido,
-                             CampoLista, CampoNumerico, Formulario,
-                             MarcoScroll, llenar_tabla, tabla_resultados)
+from src.core.errores import ErrorDiseno
+from src.gui.widgets import (COLOR_ACENTO, COLOR_FONDO, COLOR_NOTA,
+                             COLOR_TITULO, CampoInvalido, CampoLista,
+                             CampoNumerico, Formulario, MarcoScroll,
+                             llenar_tabla, tabla_resultados)
 
 TITULO = "Intercambiador de Tubos y Coraza · Método de Kern / TEMA"
 RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -72,6 +76,14 @@ class Aplicacion(tk.Tk):
         self.cotas: Dict[str, str] = {}
         self.ultimo_D_s: Optional[float] = None   # para el botón «½·D_s»
 
+        # --- estado de fluidez de la interfaz -----------------------------
+        self._trabajo: Optional[threading.Thread] = None   # cálculo en curso
+        self._botones_calculo = []                         # botones F5/F6
+        self._job_redibujo: Optional[str] = None           # debounce del canvas
+        self._ultimo_tamano = (0, 0)                       # último tamaño pintado
+        self._ultimo_chequeo_cursor = 0.0                  # throttle del hover
+        self._cursor_canvas = ""
+
         self._estilo()
         self._crear_menu()
 
@@ -102,18 +114,34 @@ class Aplicacion(tk.Tk):
             estilo.theme_use("clam")
         estilo.configure(".", background=COLOR_FONDO, font=("Segoe UI", 9))
         estilo.configure("TNotebook.Tab", padding=(16, 7),
-                         font=("Segoe UI", 9, "bold"))
+                         font=("Segoe UI", 9, "bold"),
+                         background="#e4daf2", foreground=COLOR_TITULO)
+        estilo.map("TNotebook.Tab",
+                   background=[("selected", COLOR_ACENTO)],
+                   foreground=[("selected", "white")])
         estilo.configure("TLabelframe", background=COLOR_FONDO, borderwidth=1)
         estilo.configure("TLabelframe.Label", foreground=COLOR_TITULO,
                          font=("Segoe UI", 9, "bold"))
+        estilo.configure("TFrame", background=COLOR_FONDO)
+        estilo.configure("TLabel", background=COLOR_FONDO)
         estilo.configure("Accion.TButton", font=("Segoe UI", 9, "bold"),
-                         padding=(12, 7))
+                         padding=(12, 7), background=COLOR_ACENTO,
+                         foreground="white", borderwidth=0)
+        estilo.map("Accion.TButton",
+                   background=[("active", "#9575cd"),
+                               ("disabled", "#cbb8e8")],
+                   foreground=[("disabled", "#7a6a95")])
+        estilo.configure("TButton", padding=(8, 5), background="#e4daf2")
+        estilo.map("TButton", background=[("active", "#d7c7ee")])
         estilo.configure("Treeview", rowheight=21, fieldbackground="white")
-        estilo.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"))
+        estilo.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"),
+                         background=COLOR_ACENTO, foreground="white")
         estilo.configure("Titulo.TLabel", foreground=COLOR_TITULO,
                          font=("Segoe UI", 13, "bold"))
-        estilo.configure("Nota.TLabel", foreground="#5a6b7b",
+        estilo.configure("Nota.TLabel", foreground=COLOR_NOTA,
                          font=("Segoe UI", 8))
+        estilo.configure("Designacion.TLabel", foreground=COLOR_ACENTO,
+                         font=("Segoe UI", 10, "bold"))
 
     # ------------------------------------------------------------------ menú
     def _crear_menu(self) -> None:
@@ -143,9 +171,9 @@ class Aplicacion(tk.Tk):
 
         m_an = tk.Menu(barra, tearoff=0)
         m_an.add_command(label="Dimensionar (Sizing)  ·  F5",
-                         command=self._calcular_sizing)
+                         command=lambda: self._calcular_async("sizing"))
         m_an.add_command(label="Evaluar equipo (Rating)  ·  F6",
-                         command=self._calcular_rating)
+                         command=lambda: self._calcular_async("rating"))
         m_an.add_separator()
         m_an.add_command(label="Ir a resultados",
                          command=lambda: self.nb.select(1))
@@ -167,8 +195,8 @@ class Aplicacion(tk.Tk):
         self.bind("<Control-n>", lambda e: self._nuevo())
         self.bind("<Control-o>", lambda e: self._abrir())
         self.bind("<Control-s>", lambda e: self._guardar())
-        self.bind("<F5>", lambda e: self._calcular_sizing())
-        self.bind("<F6>", lambda e: self._calcular_rating())
+        self.bind("<F5>", lambda e: self._calcular_async("sizing"))
+        self.bind("<F6>", lambda e: self._calcular_async("rating"))
 
     def _menu_ejemplos(self, padre) -> tk.Menu:
         """Submenú con los proyectos .he verificados que acompañan al programa."""
@@ -195,6 +223,7 @@ class Aplicacion(tk.Tk):
             self.form.cargar(io_state.abrir(ruta))
             self.ruta_actual = None        # evita sobrescribir el ejemplo
             self._actualizar_limites()
+            self._actualizar_designacion_tema()
             self.title(f"{TITULO}  —  {os.path.basename(ruta)}")
         self._blindar(accion, "Apertura del ejemplo")
         self._calcular_sizing()
@@ -211,15 +240,18 @@ class Aplicacion(tk.Tk):
                   style="Titulo.TLabel").grid(row=0, column=0, columnspan=2,
                                               sticky="w", padx=6, pady=(8, 2))
         ttk.Label(raiz, style="Nota.TLabel", text=(
-            "Deje VACÍA una de las dos temperaturas de salida: es la incógnita "
-            "que resuelve el balance de energía q = m·cp·ΔT.")
+            "Flujo de trabajo: 1) corrientes del proceso · 2) geometría del "
+            "tubo y la coraza · 3) configuración TEMA · 4) condiciones "
+            "mecánicas. Deje VACÍA una de las dos temperaturas de salida: es "
+            "la incógnita que resuelve el balance de energía q = m·cp·ΔT.")
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 6))
 
-        self._bloque_corrientes(raiz, fila=2)
-        self._bloque_tubos(raiz, fila=3)
-        self._bloque_coraza(raiz, fila=4)
-        self._bloque_mecanico(raiz, fila=5)
-        self._bloque_botones(raiz, fila=6)
+        self._bloque_corrientes(raiz, fila=2)      # 1 · 2
+        self._bloque_tubos(raiz, fila=3)           # 3  (columna 0)
+        self._bloque_coraza(raiz, fila=3)          # 4  (columna 1)
+        self._bloque_tema(raiz, fila=4)            # 5  (columna 0)
+        self._bloque_mecanico(raiz, fila=4)        # 6  (columna 1)
+        self._bloque_botones(raiz, fila=5)
 
     # ---------------------------------------------------------- bloques UI
     def _marco(self, padre, titulo: str, fila: int, columna: int,
@@ -234,7 +266,7 @@ class Aplicacion(tk.Tk):
         f = self.form
         fluidos = ctrl.fluidos()
 
-        cal = self._marco(padre, "Corriente CALIENTE", fila, 0)
+        cal = self._marco(padre, "1 · Corriente CALIENTE", fila, 0)
         f.add("fluido_cal", CampoLista(
             cal, 0, "Fluido", fluidos, ayuda="Base de datos termofísica de "
             "alta fidelidad (src/core).", comando=self._actualizar_limites))
@@ -249,7 +281,7 @@ class Aplicacion(tk.Tk):
             cal, 4, "T salida", "°C", opcional=True, grupo="corriente caliente",
             ayuda="Opcional: deje vacío si es la incógnita del balance."))
 
-        fri = self._marco(padre, "Corriente FRÍA", fila, 1)
+        fri = self._marco(padre, "2 · Corriente FRÍA", fila, 1)
         f.add("fluido_fri", CampoLista(
             fri, 0, "Fluido", fluidos, valor="Agua",
             comando=self._actualizar_limites))
@@ -264,7 +296,7 @@ class Aplicacion(tk.Tk):
 
     def _bloque_tubos(self, padre, fila: int) -> None:
         f = self.form
-        m = self._marco(padre, "Haz de tubos", fila, 0)
+        m = self._marco(padre, "3 · Haz de tubos", fila, 0)
         f.add("lado_tubos", CampoLista(
             m, 0, "Fluido por los TUBOS", ctrl.LADOS, valor="frio",
             ayuda="Por los tubos suele ir el fluido más sucio, corrosivo o "
@@ -292,16 +324,9 @@ class Aplicacion(tk.Tk):
 
     def _bloque_coraza(self, padre, fila: int) -> None:
         f = self.form
-        m = self._marco(padre, "Coraza, deflectores y cálculo", fila, 1)
-        f.add("tipo_carcasa", CampoLista(m, 0, "Carcasa TEMA",
-                                         ctrl.TIPOS_CARCASA, valor="E",
-                                         ayuda="E = un paso por coraza."))
-        f.add("cab_frontal", CampoLista(m, 1, "Cabezal frontal",
-                                        ctrl.CABEZAL_FRONTAL, valor="A"))
-        f.add("cab_trasero", CampoLista(m, 2, "Cabezal trasero",
-                                        ctrl.CABEZAL_TRASERO, valor="M"))
+        m = self._marco(padre, "4 · Coraza, deflectores y cálculo", fila, 1)
         f.add("baffle_mm", CampoNumerico(
-            m, 3, "Espaciado de baffles B", "mm", minimo=10.0,
+            m, 0, "Espaciado de baffles B", "mm", minimo=10.0,
             ayuda="Buena práctica: 0.3·D_s ≤ B ≤ 1.0·D_s. Como D_s es un "
                   "RESULTADO del sizing, B se ajusta iterando: use el botón "
                   "«½·D_s» tras el primer cálculo."))
@@ -309,28 +334,62 @@ class Aplicacion(tk.Tk):
         # D_s, que es resultado: este botón cierra el lazo a mano, sin que la
         # GUI calcule nada.
         ttk.Button(m, text="½·D_s", width=6, command=self._ajustar_baffle
-                   ).grid(row=3, column=3, padx=(0, 6))
-        f.add("corte_pct", CampoNumerico(m, 4, "Corte de baffle", "%",
+                   ).grid(row=0, column=3, padx=(0, 6))
+        f.add("corte_pct", CampoNumerico(m, 1, "Corte de baffle", "%",
                                          minimo=15.0, maximo=45.0,
                                          ayuda="Estándar: 25 %."))
         f.add("u_inicial", CampoNumerico(
-            m, 5, "U inicial (semilla)", "W/m²K", minimo=10.0, maximo=10000.0,
+            m, 2, "U inicial (semilla)", "W/m²K", minimo=10.0, maximo=10000.0,
             ayuda="Solo es la semilla de la iteración de Kern; no altera el "
                   "resultado convergido."))
 
         ttk.Separator(m, orient="horizontal").grid(
-            row=6, column=0, columnspan=3, sticky="ew", pady=6)
+            row=3, column=0, columnspan=3, sticky="ew", pady=6)
         ttk.Label(m, text="Equipo existente (solo para Rating)",
-                  style="Nota.TLabel").grid(row=7, column=0, columnspan=3,
+                  style="Nota.TLabel").grid(row=4, column=0, columnspan=3,
                                             sticky="w", padx=6)
-        f.add("n_tt", CampoNumerico(m, 8, "N.º total de tubos", "–",
+        f.add("n_tt", CampoNumerico(m, 5, "N.º total de tubos", "–",
                                     minimo=1, entero=True))
-        f.add("d_s_mm", CampoNumerico(m, 9, "Ø interior de coraza", "mm",
+        f.add("d_s_mm", CampoNumerico(m, 6, "Ø interior de coraza", "mm",
                                       minimo=50.0))
+
+    def _bloque_tema(self, padre, fila: int) -> None:
+        """5 · Tipos TEMA: la designación de tres letras (Fig. N-1.2)."""
+        f = self.form
+        m = self._marco(padre, "5 · Configuración TEMA (Fig. N-1.2)", fila, 0)
+        f.add("tipo_carcasa", CampoLista(
+            m, 0, "Carcasa", ctrl.TIPOS_CARCASA, valor="E",
+            ayuda="E = una pasada · F = dos con deflector longitudinal · "
+                  "G/H/J = flujo partido · K = caldera · X = cruzado.",
+            comando=self._actualizar_designacion_tema))
+        f.add("cab_frontal", CampoLista(
+            m, 1, "Cabezal frontal", ctrl.CABEZAL_FRONTAL, valor="A",
+            ayuda="A/B/C/D/N — ver la vista 5 «Catálogo TEMA» en Drawing.",
+            comando=self._actualizar_designacion_tema))
+        f.add("cab_trasero", CampoLista(
+            m, 2, "Cabezal trasero", ctrl.CABEZAL_TRASERO, valor="M",
+            ayuda="L/M/N (espejo fijo) · P/S/T/W (flotantes) · U (haz en U).",
+            comando=self._actualizar_designacion_tema))
+        ttk.Label(m, text="Designación TEMA:", style="Nota.TLabel"
+                  ).grid(row=3, column=0, sticky="w", padx=(6, 8), pady=(6, 0))
+        self.lbl_designacion = ttk.Label(
+            m, text="AEM", style="Designacion.TLabel")
+        self.lbl_designacion.grid(row=3, column=1, columnspan=2,
+                                  sticky="w", pady=(6, 0))
+
+    def _actualizar_designacion_tema(self) -> None:
+        """Muestra la designación TEMA de tres letras en vivo (ej. BEM)."""
+        try:
+            d = self.form.leer()
+        except CampoInvalido:
+            return
+        self.lbl_designacion.configure(
+            text=f"{d['cab_frontal']}{d['tipo_carcasa']}{d['cab_trasero']}")
 
     def _bloque_mecanico(self, padre, fila: int) -> None:
         f = self.form
-        m = self._marco(padre, "Diseño mecánico (TEMA Clase C)", fila, 0, 2)
+        m = self._marco(padre, "6 · Condiciones de diseño y materiales",
+                        fila, 1)
         for c in (1, 4):
             m.columnconfigure(c, weight=1)
         f.add("p_coraza_bar", CampoNumerico(m, 0, "Presión diseño coraza",
@@ -351,12 +410,15 @@ class Aplicacion(tk.Tk):
         barra = ttk.Frame(padre)
         barra.grid(row=fila, column=0, columnspan=2, sticky="ew", padx=6,
                    pady=(4, 14))
-        ttk.Button(barra, text="▶  Dimensionar (Sizing)  F5",
-                   style="Accion.TButton",
-                   command=self._calcular_sizing).pack(side="left", padx=(0, 8))
-        ttk.Button(barra, text="◆  Evaluar equipo (Rating)  F6",
-                   style="Accion.TButton",
-                   command=self._calcular_rating).pack(side="left", padx=8)
+        b_sizing = ttk.Button(barra, text="▶  Dimensionar (Sizing)  F5",
+                              style="Accion.TButton",
+                              command=lambda: self._calcular_async("sizing"))
+        b_sizing.pack(side="left", padx=(0, 8))
+        b_rating = ttk.Button(barra, text="◆  Evaluar equipo (Rating)  F6",
+                              style="Accion.TButton",
+                              command=lambda: self._calcular_async("rating"))
+        b_rating.pack(side="left", padx=8)
+        self._botones_calculo = [b_sizing, b_rating]
         ttk.Button(barra, text="Restaurar caso base",
                    command=self._restaurar_defecto).pack(side="right")
 
@@ -364,8 +426,8 @@ class Aplicacion(tk.Tk):
     def _tab_analysis(self) -> None:
         marco = ttk.Frame(self.nb, padding=8)
         self.nb.add(marco, text="  Analysis  ")
-        marco.columnconfigure(0, weight=3, uniform="an")
-        marco.columnconfigure(1, weight=2, uniform="an")
+        marco.columnconfigure(0, weight=3)
+        marco.columnconfigure(1, weight=2, minsize=540)
         marco.rowconfigure(1, weight=1)
 
         self.lbl_modo = ttk.Label(marco, text="Sin resultados todavía",
@@ -412,8 +474,11 @@ class Aplicacion(tk.Tk):
     def _tab_drawing(self) -> None:
         marco = ttk.Frame(self.nb, padding=8)
         self.nb.add(marco, text="  Drawing  ")
+        # El panel lateral necesita ~540 px para que la tabla de dimensiones
+        # muestre sus cuatro columnas (Parámetro/Símbolo/Valor/Unidad) sin
+        # recortar los valores.
         marco.columnconfigure(0, weight=3)
-        marco.columnconfigure(1, weight=1)
+        marco.columnconfigure(1, weight=2, minsize=540)
         marco.rowconfigure(1, weight=1)
 
         cab = ttk.Frame(marco)
@@ -435,7 +500,10 @@ class Aplicacion(tk.Tk):
                                 relief="solid", bd=1, highlightthickness=0)
         self.canvas.grid(row=1, column=0, sticky="nsew", padx=(0, 6))
         self.canvas.bind("<Button-1>", self._clic_dibujo)
-        self.canvas.bind("<Configure>", lambda e: self._redibujar())
+        # El redibujado va con debounce: estirar la ventana genera cientos de
+        # <Configure> seguidos y se pinta UNA sola vez al dejar de arrastrar.
+        self.canvas.bind("<Configure>", self._al_redimensionar_canvas)
+        self.canvas.bind("<Motion>", self._al_mover_sobre_canvas)
 
         lado = ttk.LabelFrame(marco, text="Dimensiones de fabricación",
                               padding=(6, 4))
@@ -490,6 +558,7 @@ class Aplicacion(tk.Tk):
         self._blindar(lambda: self.form.cargar(VALORES_DEFECTO),
                       "Restauración del caso base")
         self._actualizar_limites()
+        self._actualizar_designacion_tema()
 
     def _ajustar_baffle(self) -> None:
         """Rellena B con la mitad del último D_s calculado (lazo manual)."""
@@ -513,21 +582,31 @@ class Aplicacion(tk.Tk):
         """Ejecuta `accion` atrapando los errores del modelo (sin crash)."""
         try:
             accion()
-        except CampoInvalido as exc:
+        except Exception as exc:
+            self._mostrar_error(exc, titulo)
+
+    def _mostrar_error(self, exc: BaseException, titulo: str) -> None:
+        """Traduce una excepción del modelo al pop-up educativo correspondiente."""
+        if isinstance(exc, CampoInvalido):
             messagebox.showwarning("Formulario incompleto", str(exc))
             self.estado.set("Formulario incompleto: revise los campos en rojo.")
-        except ValueError as exc:
+        elif isinstance(exc, ErrorDiseno):
+            messagebox.showwarning(
+                f"Revisión de ingeniería · {exc.titulo}",
+                exc.como_dialogo())
+            self.estado.set(f"Cálculo detenido: {exc.titulo}.")
+        elif isinstance(exc, ValueError):
             messagebox.showwarning(
                 f"{titulo} · revisión de ingeniería",
                 f"{exc}\n\n— Corrija los datos de entrada y vuelva a calcular.")
             self.estado.set("Cálculo detenido por una condición física "
                             "inadmisible.")
-        except ZeroDivisionError:
+        elif isinstance(exc, ZeroDivisionError):
             messagebox.showwarning(
                 f"{titulo} · división por cero",
                 "Un dato geométrico o un caudal es nulo. Verifique que ningún "
                 "campo valga 0.")
-        except Exception as exc:                      # red de seguridad final
+        else:                                     # red de seguridad final
             messagebox.showerror(
                 "Error inesperado",
                 f"{type(exc).__name__}: {exc}\n\n"
@@ -535,18 +614,133 @@ class Aplicacion(tk.Tk):
             self.estado.set("Error inesperado; la aplicación sigue activa.")
 
     # ------------------------------------------------------------- cálculos
+    # Rutas de ejecución:
+    #   * SINCRONA (`_calcular_sizing` / `_calcular_rating`): la usan las
+    #     pruebas y la automatización; calcula y pinta en el mismo llamado.
+    #   * ASINCRONA (`_calcular_async`): la usan los botones y F5/F6. El
+    #     cálculo del modelo corre en un hilo aparte para que la ventana siga
+    #     respondiendo (arrastrar, cambiar de pestaña, ver el dibujo) y los
+    #     resultados se aplican en el hilo principal vía `after()`.
+    # Ambas comparten `_modelo_*` (cálculo puro, sin widgets) y `_aplicar_*`
+    # (pintado, siempre en el hilo principal).
+
     def _calcular_sizing(self) -> None:
+        """Camino síncrono (pruebas / automatización)."""
         self._blindar(self._sizing, "Dimensionamiento")
+
+    def _calcular_rating(self) -> None:
+        """Camino síncrono (pruebas / automatización)."""
+        self._blindar(self._rating, "Evaluación (Rating)")
 
     def _sizing(self) -> None:
         datos = self.form.leer()
+        paquete = self._modelo_sizing(datos)
+        self._aplicar_sizing(datos, *paquete)
+
+    def _rating(self) -> None:
+        datos = self.form.leer()
+        paquete = self._modelo_rating(datos)
+        self._aplicar_rating(datos, *paquete)
+
+    # -- modelo (sin UI): seguro de ejecutar en un hilo aparte -------------
+    def _modelo_sizing(self, datos: Dict[str, Any]):
         res = ctrl.correr_sizing(datos)
+        res_mec, aviso_mec = self._modelo_mecanico(
+            datos, res.D_s, res.N_tt, res.T_h_out, res.T_c_out)
+        return res, res_mec, aviso_mec
+
+    def _modelo_rating(self, datos: Dict[str, Any]):
+        res = ctrl.correr_rating(datos)
+        res_mec, aviso_mec = self._modelo_mecanico(
+            datos, datos["d_s_mm"] / 1000.0, int(datos["n_tt"]),
+            res.T_h_out, res.T_c_out)
+        return res, res_mec, aviso_mec
+
+    def _modelo_mecanico(self, datos: Dict[str, Any], D_s: float, N_tt: int,
+                         T_h_out: float, T_c_out: float):
+        """El fallo mecánico no debe invalidar el resultado térmico."""
+        try:
+            T_m_cal = 0.5 * (datos["tin_cal"] + T_h_out)
+            T_m_fri = 0.5 * (datos["tin_fri"] + T_c_out)
+            return ctrl.correr_mecanico(datos, D_s, N_tt, T_m_cal,
+                                        T_m_fri), None
+        except ValueError as exc:
+            return None, str(exc)
+
+    # -- ejecución en segundo plano ----------------------------------------
+    def _calcular_async(self, modo: str) -> None:
+        """Lanza sizing/rating sin congelar la ventana (botones y F5/F6)."""
+        if self._trabajo is not None and self._trabajo.is_alive():
+            self.estado.set("Todavía hay un cálculo en curso… espere un "
+                            "momento, ya casi está.")
+            return
+        try:
+            datos = self.form.leer()
+        except CampoInvalido as exc:
+            self._mostrar_error(exc, "Formulario")
+            return
+
+        etiqueta = ("Calculando dimensionamiento (Método de Kern)… la ventana "
+                    "sigue activa" if modo == "sizing"
+                    else "Evaluando equipo (Rating)… la ventana sigue activa")
+        self._poner_ocupado(True, etiqueta)
+        bandeja: Dict[str, Any] = {}
+
+        def trabajo():
+            try:
+                if modo == "sizing":
+                    bandeja["ok"] = self._modelo_sizing(datos)
+                else:
+                    bandeja["ok"] = self._modelo_rating(datos)
+            except Exception as exc:      # se mostrará en el hilo principal
+                bandeja["err"] = exc
+
+        self._trabajo = threading.Thread(target=trabajo, daemon=True)
+        self._trabajo.start()
+        self.after(40, lambda: self._recoger_trabajo(modo, datos, bandeja))
+
+    def _recoger_trabajo(self, modo: str, datos: Dict[str, Any],
+                         bandeja: Dict[str, Any]) -> None:
+        """Sondea el hilo de cálculo; al terminar aplica los resultados."""
+        if self._trabajo is not None and self._trabajo.is_alive():
+            self.after(40, lambda: self._recoger_trabajo(modo, datos, bandeja))
+            return
+        self._trabajo = None
+        self._poner_ocupado(False)
+        titulo = ("Dimensionamiento" if modo == "sizing"
+                  else "Evaluación (Rating)")
+        if "err" in bandeja:
+            self._mostrar_error(bandeja["err"], titulo)
+            return
+
+        paquete = bandeja["ok"]
+
+        def aplicar():
+            if modo == "sizing":
+                self._aplicar_sizing(datos, *paquete)
+            else:
+                self._aplicar_rating(datos, *paquete)
+        self._blindar(aplicar, "Presentación de resultados")
+
+    def _poner_ocupado(self, ocupado: bool, etiqueta: str = "") -> None:
+        """Cursor de espera + botones deshabilitados mientras corre un cálculo."""
+        self.config(cursor="watch" if ocupado else "")
+        estado = "disabled" if ocupado else "normal"
+        for boton in self._botones_calculo:
+            boton.configure(state=estado)
+        if etiqueta:
+            self.estado.set(etiqueta)
+            self.update_idletasks()      # pinta el mensaje antes del trabajo pesado
+
+    # -- aplicación de resultados (siempre en el hilo principal) ------------
+    def _aplicar_sizing(self, datos: Dict[str, Any], res, res_mec,
+                        aviso_mec: Optional[str]) -> None:
         self.res_termico, self.modo = res, "sizing"
         self.ultimo_D_s = res.D_s
         self.form.campos["n_tt"].set(res.N_tt)
         self.form.campos["d_s_mm"].set(round(res.D_s * 1000.0, 1))
         self._render_sizing(res)
-        self._mecanico(datos, res.D_s, res.N_tt, res.T_h_out, res.T_c_out)
+        self._aplicar_mecanico(res_mec, aviso_mec)
         self.nb.select(1)
         self.estado.set(
             f"Sizing convergido en {res.iteraciones} iteraciones · "
@@ -554,17 +748,12 @@ class Aplicacion(tk.Tk):
             f"{res.N_tt} tubos · D_s = {res.D_s*1000:.0f} mm")
         self._avisar_advertencias(res.advertencias)
 
-    def _calcular_rating(self) -> None:
-        self._blindar(self._rating, "Evaluación (Rating)")
-
-    def _rating(self) -> None:
-        datos = self.form.leer()
-        res = ctrl.correr_rating(datos)
+    def _aplicar_rating(self, datos: Dict[str, Any], res, res_mec,
+                        aviso_mec: Optional[str]) -> None:
         self.res_termico, self.modo = res, "rating"
         self.ultimo_D_s = datos["d_s_mm"] / 1000.0
         self._render_rating(res)
-        self._mecanico(datos, datos["d_s_mm"] / 1000.0, int(datos["n_tt"]),
-                       res.T_h_out, res.T_c_out)
+        self._aplicar_mecanico(res_mec, aviso_mec)
         self.nb.select(1)
         self.estado.set(
             f"Rating convergido en {res.iteraciones} iteraciones · "
@@ -572,30 +761,31 @@ class Aplicacion(tk.Tk):
             f"T_h,out = {res.T_h_out:.1f} °C · T_c,out = {res.T_c_out:.1f} °C")
         self._avisar_advertencias(res.advertencias)
 
-    def _mecanico(self, datos: Dict[str, Any], D_s: float, N_tt: int,
-                  T_h_out: float, T_c_out: float) -> None:
-        """El fallo mecánico no debe invalidar el resultado térmico."""
-        try:
-            T_m_cal = 0.5 * (datos["tin_cal"] + T_h_out)
-            T_m_fri = 0.5 * (datos["tin_fri"] + T_c_out)
-            self.res_mecanico = ctrl.correr_mecanico(
-                datos, D_s, N_tt, T_m_cal, T_m_fri)
-            self._render_mecanico(self.res_mecanico)
-            self._redibujar()
-        except ValueError as exc:
+    def _aplicar_mecanico(self, res_mec, aviso_mec: Optional[str]) -> None:
+        if res_mec is not None:
+            self.res_mecanico = res_mec
+            self._render_mecanico(res_mec)
+        else:
             self.res_mecanico = None
-            self._redibujar()
+        self._redibujar()
+        if aviso_mec:
             messagebox.showwarning(
                 "Diseño mecánico no completado",
                 f"El cálculo térmico sí convergió, pero el dimensionamiento "
-                f"mecánico se detuvo:\n\n{exc}")
+                f"mecánico se detuvo:\n\n{aviso_mec}")
 
     def _avisar_advertencias(self, advertencias) -> None:
         if advertencias:
+            cuerpo = []
+            for i, texto in enumerate(advertencias, 1):
+                cuerpo.append(f"{i}. {texto}")
             messagebox.showinfo(
                 "Advertencias de buena práctica",
-                "El cálculo convergió, pero conviene revisar:\n\n• " +
-                "\n\n• ".join(advertencias))
+                "El cálculo convergió, pero conviene revisar "
+                f"({len(advertencias)} nota(s)):\n\n" +
+                "\n\n".join(cuerpo) +
+                "\n\nEstas notas también quedan en el panel «Advertencias y "
+                "notas educativas» de la pestaña Analysis.")
 
     # ------------------------------------------------------------ renderizado
     def _render_sizing(self, r) -> None:
@@ -661,12 +851,16 @@ class Aplicacion(tk.Tk):
             ("Velocidad másica media", "v_t", f"{r.v_t:.3f}", "m/s",
              "" if ctrl.V_TUBO_MIN <= r.v_t <= ctrl.V_TUBO_MAX else "alerta"),
             ("Reynolds", "Re_t", f"{r.Re_t:,.0f}", "–"),
-            ("Régimen de flujo", "–", r.regimen_tubo, ""),
+            ("Régimen de flujo", "–", r.regimen_tubo, "",
+             "" if r.regimen_tubo == "turbulento" else "alerta"),
             ("LADO CORAZA", "", "", "", "titulo"),
             ("Velocidad media", "v_s", f"{r.v_s:.3f}", "m/s",
              "" if ctrl.V_CORAZA_MIN <= r.v_s <= ctrl.V_CORAZA_MAX
              else "alerta"),
             ("Reynolds", "Re_s", f"{r.Re_s:,.0f}", "–"),
+            ("Régimen de flujo", "–", getattr(r, "regimen_coraza", "–"), "",
+             "" if getattr(r, "regimen_coraza", "turbulento") == "turbulento"
+             else "alerta"),
             ("Ø equivalente de Kern", "D_e", f"{r.D_e*1000.0:,.2f}", "mm"),
             ("CAÍDA DE PRESIÓN", "", "", "", "titulo"),
             ("Δp lado tubos", "Δp_t", "reservado", "–"),
@@ -690,14 +884,19 @@ class Aplicacion(tk.Tk):
         b, br = m.baffles, m.brida
         filas = [
             ("CARCASA", "", "", "", "titulo"),
+            ("Tipo TEMA de coraza", "–", m.tipo_carcasa, ""),
             ("Ø interior", "D_s", f"{m.D_s*1000:,.1f}", "mm"),
             ("Espesor de pared", "t_s", f"{m.T_s*1000:,.2f}", "mm"),
             ("Ø exterior", "D_o", f"{m.D_o*1000:,.1f}", "mm"),
             ("Límite exterior del haz", "D_otl", f"{m.D_otl*1000:,.1f}", "mm"),
             ("Ø de centros periféricos", "D_ctl", f"{m.D_ctl*1000:,.1f}", "mm"),
             ("Longitud total", "L_tot", f"{m.L_total:,.3f}", "m"),
-            ("ESPEJO Y CABEZAL", "", "", "", "titulo"),
+            ("ESPEJO Y CABEZALES", "", "", "", "titulo"),
             ("Espesor de espejo", "L_ts", f"{m.L_ts*1000:,.2f}", "mm"),
+            (f"Cabezal frontal «{m.cab_frontal.tipo}»", "–",
+             m.cab_frontal.descripcion, ""),
+            (f"Cabezal trasero «{m.cab_trasero.tipo}»", "–",
+             m.cab_trasero.descripcion, ""),
             ("Espesor de cubierta", "T_c", f"{m.T_c*1000:,.2f}", "mm"),
             ("Tipo de cubierta", "–", m.tipo_cubierta, ""),
             ("DEFLECTORES", "", "", "", "titulo"),
@@ -708,6 +907,8 @@ class Aplicacion(tk.Tk):
             ("Ø de placa", "D_b", f"{b.D_baffle*1000:,.1f}", "mm"),
             ("Altura del corte", "h_c", f"{b.altura_corte*1000:,.1f}", "mm"),
             ("Tramo sin soporte", "L_u", f"{b.luz_sin_soporte:,.3f}", "m"),
+            ("Varillas tensores (CB-4.7.1)", "n",
+             f"{m.tie_rods.cantidad} × {m.tie_rods.d*1000:,.1f}", "mm"),
             ("BRIDA", "", "", "", "titulo"),
             ("Ancho radial", "f_w", f"{br.f_w*1000:,.1f}", "mm"),
             ("Ø exterior", "D_F", f"{br.D_F*1000:,.1f}", "mm"),
@@ -729,7 +930,17 @@ class Aplicacion(tk.Tk):
         llenar_tabla(self.tbl_mecanico, filas)
 
     # --------------------------------------------------------------- dibujos
-    def _datos_dibujo(self) -> Dict[str, Any]:
+    def _datos_tipos(self) -> Dict[str, object]:
+        """Solo los tipos TEMA elegidos (para el catálogo, sin calcular)."""
+        try:
+            d = self.form.leer()
+        except CampoInvalido:
+            return {}
+        return {"tipo_carcasa": d["tipo_carcasa"],
+                "cab_frontal": d["cab_frontal"],
+                "cab_trasero": d["cab_trasero"]}
+
+    def _datos_dibujo(self) -> Dict[str, object]:
         """Empaqueta las cotas calculadas para drawings.py."""
         m, t = self.res_mecanico, self.res_termico
         if m is None or t is None:
@@ -746,6 +957,11 @@ class Aplicacion(tk.Tk):
             "D_s": m.D_s, "D_o": m.D_o, "L": d["long_m"], "L_ts": m.L_ts,
             "L_total": m.L_total, "D_otl": m.D_otl, "D_ctl": m.D_ctl,
             "T_c": m.T_c, "tipo_cubierta": m.tipo_cubierta,
+            "T_c_tras": m.cab_trasero.T_c,
+            "tipo_cubierta_tras": m.cab_trasero.tipo_cubierta,
+            "desc_cab_frontal": m.cab_frontal.descripcion,
+            "desc_cab_trasero": m.cab_trasero.descripcion,
+            "desc_carcasa": ctrl.desc_carcasa(d["tipo_carcasa"]),
             "N_B": m.baffles.N_B, "L_bc": m.baffles.L_bc,
             "L_bi": m.baffles.L_bi, "e_baffle": m.baffles.espesor,
             "D_baffle": m.baffles.D_baffle,
@@ -753,6 +969,7 @@ class Aplicacion(tk.Tk):
             "luz_sin_soporte": m.baffles.luz_sin_soporte,
             "f_w": m.brida.f_w, "D_F": m.brida.D_F, "D_BC": m.brida.D_BC,
             "n_pernos": m.brida.n_pernos, "d_perno": m.brida.d_perno,
+            "tie_rods": {"cantidad": m.tie_rods.cantidad, "d": m.tie_rods.d},
             "boq_s": boq(m.boquilla_coraza), "boq_t": boq(m.boquilla_tubos),
             "N_tt": N_tt, "d_o": d["d_o_mm"] / 1000.0,
             "P_T": d["pitch_mm"] / 1000.0, "corte": d["corte_pct"] / 100.0,
@@ -761,17 +978,56 @@ class Aplicacion(tk.Tk):
             "cab_frontal": d["cab_frontal"], "cab_trasero": d["cab_trasero"],
         }
 
+    def _al_redimensionar_canvas(self, _evento=None) -> None:
+        """Coalesa los <Configure>: se pinta UNA vez al terminar de arrastrar.
+
+        Sin esto, estirar la ventana dispara cientos de redibujados completos
+        (con ~900 tubos cada uno) y el arrastre da tirones.
+        """
+        if self._job_redibujo is not None:
+            self.after_cancel(self._job_redibujo)
+        self._job_redibujo = self.after(120, self._redibujar_suave)
+
+    def _redibujar_suave(self) -> None:
+        self._job_redibujo = None
+        tam = (self.canvas.winfo_width(), self.canvas.winfo_height())
+        if tam == self._ultimo_tamano:
+            return                       # el tamaño no cambió: no repintar
+        self._redibujar()
+
+    def _al_mover_sobre_canvas(self, evento) -> None:
+        """Cursor de mano sobre las piezas clicables (con throttle)."""
+        ahora = time.monotonic()
+        if ahora - self._ultimo_chequeo_cursor < 0.06:
+            return
+        self._ultimo_chequeo_cursor = ahora
+        cursor = ""
+        if self.cotas:
+            item = self.canvas.find_closest(
+                self.canvas.canvasx(evento.x), self.canvas.canvasy(evento.y))
+            if item and any(t in self.cotas
+                            for t in self.canvas.gettags(item[0])):
+                cursor = "hand2"
+        if cursor != self._cursor_canvas:
+            self._cursor_canvas = cursor
+            self.canvas.configure(cursor=cursor)
+
     def _redibujar(self) -> None:
         funcion = drawings.VISTAS.get(self.var_vista.get())
         if funcion is None:
             return
+        datos = self._datos_dibujo()
+        if not datos and funcion is drawings.dibujar_catalogo_tema:
+            datos = self._datos_tipos()   # el catálogo no necesita resultados
         try:
-            self.cotas = funcion(self.canvas, self._datos_dibujo())
+            self.cotas = funcion(self.canvas, datos)
         except Exception as exc:                      # nunca tumbar la GUI
             self.canvas.delete("all")
             self.canvas.create_text(20, 20, anchor="nw", fill="#a33",
                                     text=f"No se pudo generar el dibujo:\n{exc}")
             self.cotas = {}
+        self._ultimo_tamano = (self.canvas.winfo_width(),
+                               self.canvas.winfo_height())
 
     def _ir_a_vista(self, nombre: str) -> None:
         self.var_vista.set(nombre)
@@ -815,6 +1071,7 @@ class Aplicacion(tk.Tk):
             self.form.cargar(io_state.abrir(ruta))
             self.ruta_actual = ruta
             self._actualizar_limites()
+            self._actualizar_designacion_tema()
             self.title(f"{TITULO}  —  {os.path.basename(ruta)}")
             self.nb.select(0)
             self.estado.set(f"Proyecto abierto: {ruta}. Pulse F5 para "
@@ -888,19 +1145,38 @@ AYUDA = [
     ("6. Espaciado de baffles",
      "Buena práctica: 0.3·D_s ≤ B ≤ 1.0·D_s. Un B pequeño sube el coeficiente "
      "de coraza pero dispara la caída de presión."),
-    ("7. Dibujos acotados",
-     "En la pestaña Drawing elija entre cuatro vistas paramétricas. Haga clic "
-     "sobre cualquier pieza (carcasa, tubos, baffles, boquillas, brida) para "
-     "abrir una ventana con sus cotas exactas en milímetros."),
+    ("7. Dibujos acotados y catálogo TEMA",
+     "En la pestaña Drawing elija entre cinco vistas paramétricas. Las vistas "
+     "1 y 4 dibujan el corte longitudinal y el cabezal con el diagrama "
+     "correspondiente al TIPO TEMA elegido (A/B/C/D/N en el frontal, "
+     "E/F/G/H/J/K/X en la coraza, L/M/N/P/S/T/U/W en el trasero). La vista 5 "
+     "muestra el catálogo completo de la Fig. N-1.2 del estándar TEMA con su "
+     "selección resaltada. Haga clic sobre cualquier pieza para abrir una "
+     "ventana con sus cotas exactas en milímetros."),
     ("8. Archivos .he",
      "File → Guardar almacena únicamente los datos de entrada en formato "
      "JSON. Al abrir un proyecto debe recalcular con F5: así los resultados "
      "nunca quedan desactualizados respecto del motor de cálculo."),
     ("9. Mensajes de alerta",
-     "Un pop-up amarillo significa que el modelo físico rechazó los datos "
-     "(cruce de temperaturas, violación de la 2ª Ley, fluido fuera de su "
-     "ventana de validez). No es un error del programa: es una lección de "
+     "Un pop-up de «Revisión de ingeniería» significa que el modelo físico o "
+     "la norma TEMA rechazó los datos. Cada mensaje responde cuatro "
+     "preguntas: QUÉ PASÓ (el hecho con números), POR QUÉ (el principio "
+     "físico o la norma), CÓMO LO SOLUCIONO (la acción sobre el formulario) y "
+     "la REFERENCIA. No es un error del programa: es una lección de "
      "termodinámica. Corrija la entrada y recalcule."),
+    ("10. Ventanas de temperatura de los fluidos",
+     "Cada fluido tiene una ventana de validez (visible bajo su menú "
+     "desplegable). El programa valida TODOS los puntos de temperatura "
+     "(entradas y salidas), no solo la media: por ejemplo, etanol a 95 °C se "
+     "rechaza aunque su media quede dentro del rango. El agua líquida está "
+     "limitada a 100 °C (su ebullición a 1 atm): el modelo es monofásico y no "
+     "cubre servicios presurizados ni vaporización."),
+    ("11. Régimen de flujo e incertidumbre",
+     "Las correlaciones de Kern están calibradas para flujo TURBULENTO. Si el "
+     "cálculo cae en régimen laminar o de transición, el programa lo señala y "
+     "reporta una banda de incertidumbre estimada (±25 % en transición, "
+     "±40 % en laminar) sobre U. En esos casos contraste el resultado con "
+     "Bell-Delaware, ε-NTU o datos de servicio antes de fabricar."),
 ]
 
 

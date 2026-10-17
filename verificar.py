@@ -75,6 +75,20 @@ def probar_core() -> None:
     except ValueError:
         check(True, "rechaza un fluido inexistente con ValueError")
 
+    # Informe PDF de procedencia de las propiedades (solo stdlib).
+    from src.core.informe_propiedades import generar_informe
+    import tempfile
+    ruta_pdf = os.path.join(tempfile.gettempdir(), "_verificar_informe.pdf")
+    generar_informe(ruta_pdf)
+    with open(ruta_pdf, "rb") as fh:
+        cabecera = fh.read(8)
+        fh.seek(-16, 2)
+        cola = fh.read()
+    tam = os.path.getsize(ruta_pdf)
+    check(cabecera.startswith(b"%PDF") and b"%%EOF" in cola and tam > 30000,
+          f"el informe de propiedades genera un PDF valido ({tam/1024:.0f} KB)")
+    os.remove(ruta_pdf)
+
 
 # =============================================================================
 # 2 y 3. THERMO + MECHANICAL
@@ -159,6 +173,18 @@ def probar_errores() -> None:
          dict(base, esp_mm=12.0)),
         ("numero de pasos no estandar",
          dict(base, n_pasos="3")),
+        # --- defectos corregidos: exceso de temperatura por la media ---------
+        ("etanol por encima de 75 C (aunque la media quede valida)",
+         dict(base, fluido_cal="Etanol", tin_cal=95.0, tout_cal=45.0)),
+        ("agua por encima de 100 C (limite de ebullicion a 1 atm)",
+         dict(base, fluido_cal="Agua", tin_cal=105.0, tout_cal=60.0)),
+        ("agua calculada por encima de 100 C en su salida",
+         dict(base, fluido_cal="Etilenglicol", tin_cal=160.0, tout_cal=60.0,
+              m_fri=0.01, m_cal=20.0)),
+        ("corriente caliente que se estaria calentando",
+         dict(base, tin_cal=50.0, tout_cal=80.0)),
+        ("corriente fria que se estaria enfriando",
+         dict(base, tout_cal=None, tout_fri=10.0)),
     ]
     for descripcion, datos in escenarios:
         try:
@@ -170,6 +196,110 @@ def probar_errores() -> None:
         except Exception as exc:
             check(False, f"rechaza {descripcion}",
                   f"lanzo {type(exc).__name__} en vez de ValueError")
+
+
+# =============================================================================
+# 5b. TIPOS TEMA Y ESTRUCTURA DE LOS MENSAJES
+# =============================================================================
+def probar_tipos_tema() -> None:
+    bloque("5b. Tipos TEMA soportados (Fig. N-1.2) y mensajes estructurados")
+    from src.gui import controller as ctrl
+    from src.gui.app import VALORES_DEFECTO
+    from src.core.errores import ErrorDiseno
+
+    base = dict(VALORES_DEFECTO)
+    base["tout_fri"] = None
+
+    # --- todos los tipos de coraza deben calcular (termico + mecanico) -----
+    for tipo in ("E", "F", "G", "H", "J", "K", "X"):
+        d = dict(base, tipo_carcasa=tipo)
+        try:
+            r = ctrl.correr_sizing(d)
+            ctrl.correr_mecanico(d, r.D_s, r.N_tt, r.T_h_out, r.T_c_out)
+            check(True, f"coraza tipo {tipo}: calcula termico y mecanico")
+        except Exception as exc:
+            check(False, f"coraza tipo {tipo}: calcula termico y mecanico",
+                  f"{type(exc).__name__}: {exc}")
+
+    # --- todos los cabezales frontales y traseros --------------------------
+    for frontal in ("A", "B", "C", "D", "N"):
+        for trasero in ("L", "M", "N", "P", "S", "T", "U", "W"):
+            d = dict(base, cab_frontal=frontal, cab_trasero=trasero)
+            try:
+                r = ctrl.correr_sizing(d)
+                m = ctrl.correr_mecanico(d, r.D_s, r.N_tt, r.T_h_out,
+                                         r.T_c_out)
+                ok = (m.cab_frontal.tipo == frontal
+                      and m.cab_trasero.tipo == trasero
+                      and m.cab_frontal.descripcion
+                      and m.cab_trasero.descripcion)
+                check(ok, f"cabezal {frontal}-{trasero}: completo y descrito")
+            except Exception as exc:
+                check(False, f"cabezal {frontal}-{trasero}: completo y descrito",
+                      f"{type(exc).__name__}: {exc}")
+
+    # --- los mensajes de error van estructurados en cuatro preguntas -------
+    try:
+        ctrl.correr_sizing(dict(base, fluido_cal="Etanol", tin_cal=95.0,
+                                tout_cal=45.0))
+        check(False, "el error de temperatura viene estructurado",
+              "no lanzo excepcion")
+    except ErrorDiseno as exc:
+        dlg = exc.como_dialogo()
+        check(all(seccion in dlg for seccion in
+                  ("QUÉ PASÓ", "POR QUÉ", "CÓMO LO SOLUCIONO", "REFERENCIA")),
+              "el error de temperatura viene estructurado (4 preguntas)")
+    except Exception as exc:
+        check(False, "el error de temperatura viene estructurado",
+              f"{type(exc).__name__}")
+
+    # --- el tipo de coraza desconocido se explica con el catalogo completo --
+    try:
+        ctrl.correr_mecanico(dict(base, tipo_carcasa="Z"), 0.5, 100, 50, 30)
+        check(False, "un tipo de coraza desconocido se rechaza explicando",
+              "no lanzo excepcion")
+    except ValueError as exc:
+        check(all(t in str(exc) for t in ("E", "F", "G", "H", "J", "K", "X")),
+              "un tipo de coraza desconocido se rechaza listando los validos")
+    except Exception as exc:
+        check(False, "un tipo de coraza desconocido se rechaza explicando",
+              f"{type(exc).__name__}")
+
+
+# =============================================================================
+# 5c. DETERMINISMO EN REGIMEN LAMINAR (independencia de la semilla U)
+# =============================================================================
+def probar_laminar() -> None:
+    bloque("5c. Convergencia determinista del sizing (semilla U inicial)")
+    from src.gui import controller as ctrl
+    from src.gui.app import VALORES_DEFECTO
+
+    # Caso deliberadamente laminar: glicol caliente en coraza, agua lenta en
+    # tubos con 1 paso (velocidad baja -> Re < 2100).
+    base = dict(VALORES_DEFECTO, tout_fri=None,
+                fluido_cal="Etilenglicol", m_cal=1.0, tin_cal=120.0,
+                tout_cal=100.0, m_fri=0.25, tin_fri=25.0,
+                long_m=3.66, n_pasos="1", baffle_mm=200.0)
+    resultados = []
+    for semilla in (50.0, 300.0, 700.0, 2500.0):
+        r = ctrl.correr_sizing(dict(base, u_inicial=semilla))
+        resultados.append(r)
+    r0 = resultados[0]
+    iguales = all(
+        abs(r.U - r0.U) < 1e-6 * max(r0.U, 1.0) and r.N_tt == r0.N_tt
+        and abs(r.A - r0.A) < 1e-6 * max(r0.A, 1.0) and r.D_s == r0.D_s
+        for r in resultados)
+    check(iguales,
+          f"U = {r0.U:.2f} W/m2.K, {r0.N_tt} tubos, D_s = {r0.D_s*1000:.0f} mm "
+          f"identicos con 4 semillas distintas (regimen tubos: "
+          f"{r0.regimen_tubo}, coraza: {r0.regimen_coraza})",
+          str([(r.U, r.N_tt) for r in resultados]))
+    check(r0.regimen_tubo != "turbulento" and r0.regimen_coraza != "turbulento",
+          f"el caso de prueba cae en regimen no turbulento "
+          f"(tubos: {r0.regimen_tubo}, coraza: {r0.regimen_coraza})")
+    check(any(a for a in r0.advertencias if "incertidumbre" in a),
+          "el caso laminar reporta su banda de incertidumbre",
+          "; ".join(r0.advertencias))
 
 
 # =============================================================================
@@ -202,6 +332,36 @@ def probar_gui() -> None:
         win.update()
         check(len(win.canvas.find_all()) > 10 and len(win.cotas) > 0,
               f"dibuja «{vista[:28]}» con cotas clicables")
+
+    # Los dibujos deben salir segun el TIPO TEMA elegido (Fig. N-1.2).
+    avisos.clear()
+    win.form.campos["cab_frontal"].set("N")
+    win.form.campos["tipo_carcasa"].set("K")
+    win.form.campos["cab_trasero"].set("U")
+    win._calcular_sizing()
+    win.update()
+    graves = [a for a in avisos if a[0] in ("showwarning", "showerror")]
+    win._ir_a_vista("1 · Carcasa (corte longitudinal)")
+    win.update()
+    check(not graves and len(win.cotas) > 3,
+          "el corte longitudinal dibuja el tipo N-K-U sin errores",
+          str(graves))
+    check("N" in win.cotas.get("cab_front", "") and
+          "U" in win.cotas.get("cab_tras", ""),
+          "las cotas identifican los tipos N y U del corte longitudinal",
+          str(sorted(win.cotas)))
+    win._ir_a_vista("5 · Catálogo TEMA (Fig. N-1.2)")
+    win.update()
+    seleccion = [t for t in win.cotas if "ES LA SELECCIÓN ACTUAL" in
+                 win.cotas[t]]
+    check(sorted(seleccion) == ["cat_cab_frontal_N", "cat_cab_trasero_U",
+                                "cat_tipo_carcasa_K"],
+          "el catálogo TEMA resalta exactamente los tres tipos elegidos",
+          str(sorted(seleccion)))
+    # y vuelve al caso base para el resto de la prueba
+    win.form.campos["cab_frontal"].set("A")
+    win.form.campos["tipo_carcasa"].set("E")
+    win.form.campos["cab_trasero"].set("M")
 
     # Guardado y lectura de un proyecto .he.
     ruta = os.path.join(tempfile.gettempdir(), "_verificar_tmp.he")
@@ -259,6 +419,38 @@ def probar_gui() -> None:
     win._ajustar_baffle()
     check(win.form.campos["baffle_mm"].var.get() != B_antes,
           "el boton «1/2 D_s» ajusta el espaciado de baffles")
+
+    # --- fluidez: cálculo en segundo plano (botones / F5 / F6) ------------
+    import time as _t
+    avisos.clear()
+    win.form.campos["m_cal"].set(A.VALORES_DEFECTO["m_cal"])
+    win._calcular_async("sizing")
+    limite = _t.monotonic() + 30.0
+    while win._trabajo is not None and _t.monotonic() < limite:
+        win.update()
+        _t.sleep(0.02)
+    win.update()
+    graves = [a for a in avisos if a[0] in ("showwarning", "showerror")]
+    check(win._trabajo is None and len(win.tbl_termico.get_children()) > 10,
+          "el cálculo en segundo plano (F5) completa y pinta los resultados",
+          str(graves))
+    check(not graves, "el cálculo en segundo plano no lanza errores", str(graves))
+    check(win.cget("cursor") == "",
+          "el cursor vuelve a la normalidad tras el cálculo")
+
+    # --- fluidez: redibujado del canvas con debounce ----------------------
+    win._ir_a_vista("2 · Distribución de tubos")
+    win.update()
+    items_antes = len(win.canvas.find_all())
+    win._al_redimensionar_canvas()
+    win._al_redimensionar_canvas()          # dos eventos seguidos = 1 pintada
+    check(win._job_redibujo is not None,
+          "el redibujado por resize queda diferido (debounce)")
+    _t.sleep(0.25)
+    win.update()
+    check(win._job_redibujo is None and len(win.canvas.find_all()) == items_antes,
+          "tras el debounce se pinta una sola vez y el dibujo queda completo",
+          f"items {items_antes} -> {len(win.canvas.find_all())}")
 
     win.destroy()
 
@@ -352,7 +544,8 @@ def main() -> int:
     print("=" * 68)
     print("VERIFICACION DEL SOFTWARE DE INTERCAMBIADORES DE TUBOS Y CORAZA")
     print("=" * 68)
-    for prueba in (probar_core, probar_calculo, probar_errores, probar_gui,
+    for prueba in (probar_core, probar_calculo, probar_errores,
+                   probar_tipos_tema, probar_laminar, probar_gui,
                    probar_ejemplos, probar_robustez):
         try:
             prueba()
