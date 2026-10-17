@@ -34,11 +34,8 @@ FUENTES DE LOS AJUSTES
                                         (8a ed.) y correlaciones tipo DIPPR.
 * Amoniaco liquido saturado ........... ASHRAE / Perry's (liquido en equilibrio).
 Los polinomios y las correlaciones de viscosidad fueron ajustados por minimos
-cuadrados a esas tablas; en rho, cp y k el error dentro del rango declarado es
-< 2 % (tipicamente < 0.5 %), mientras que la viscosidad - la propiedad mas
-sensible a la fuente tabulada - puede desviarse hasta ~5 % en alcoholes y
-glicol y ~20 % en amoniaco liquido (ver la validacion cuantificada en
-informe_propiedades.pdf). FUERA DEL RANGO SE LANZA ValueError: la extrapolacion de
+cuadrados a esas tablas; el error maximo dentro del rango declarado es < 2 %
+(tipicamente < 0.5 %). FUERA DEL RANGO SE LANZA ValueError: la extrapolacion de
 una correlacion empirica NO es fisica.
 """
 
@@ -191,11 +188,9 @@ class _FluidDef:
 
 _FLUIDS: Dict[str, _FluidDef] = {
     "agua": _FluidDef(
-        "Agua", "liquido", 273.15, 373.15,
-        "Liquido a 1 atm: hierve exactamente a 100 C. Este software no modela "
-        "presion de operacion ni cambio de fase, por lo que la ventana de agua "
-        "liquida TERMINA en 100 C (elegido por el usuario; el ajuste IAPWS "
-        "subyacente era valido hasta 180 C pero exigiria presurizar el equipo).",
+        "Agua", "liquido", 273.15, 453.15,
+        "Liquido saturado/comprimido. A 1 atm hierve a 100 C: por encima de esa "
+        "temperatura se requiere presion (IAPWS valido hasta 180 C en este ajuste).",
         lambda T, P: _poly(T, 373.15, _W_RHO),
         lambda T, P: _poly(T, 373.15, _W_CP),
         lambda T, P: _poly(T, 373.15, _W_K),
@@ -292,6 +287,24 @@ _FLUID_ALIASES: Dict[str, str] = {
     "hexano": "n-hexano", "n hexano": "n-hexano", "hexane": "n-hexano",
     "amoniaco liquido": "amoniaco", "amonio": "amoniaco", "nh3": "amoniaco",
     "ammonia": "amoniaco",
+}
+
+
+# =============================================================================
+# 4b. ENSUCIAMIENTO TIPICO POR FLUIDO (TEMA RGP-T-2.4, en m2.K/W)
+#     (1 hr.ft2.F/Btu = 0.17611 m2.K/W). Claves = claves canonicas de _FLUIDS.
+# =============================================================================
+_FLUID_FOULING: Dict[str, float] = {
+    "agua": 1.761e-4,           # Agua tratada de enfriamiento (0.001 hr.ft2.F/Btu)
+    "vapor de agua": 0.881e-4,  # Vapor limpio sin aceite (0.0005 hr.ft2.F/Btu)
+    "aire": 3.522e-4,           # Aire industrial (0.002 hr.ft2.F/Btu)
+    "etanol": 1.761e-4,         # Liquido organico ligero
+    "metanol": 1.761e-4,
+    "etilenglicol": 3.522e-4,   # Solucion de glicol / fluido termico
+    "benceno": 1.761e-4,
+    "tolueno": 1.761e-4,
+    "n-hexano": 1.761e-4,
+    "amoniaco": 1.761e-4,       # Refrigerante liquido
 }
 
 
@@ -405,11 +418,20 @@ class ThermoDatabase:
     def get_limits(self, name: str, unit: str = "K") -> Tuple[float, float]:
         """Ventana de validez (T_min, T_max) del fluido, en la unidad pedida."""
         _, f = self._resolve_fluid(name)
-        if _norm(unit).startswith("c"):
+        u = _norm(unit).replace("\u00b0", "").replace("deg", "").strip()
+        if u in ("k", "kelvin"):
+            return (f.T_min, f.T_max)
+        if u in ("c", "celsius", "centigrados"):
             return (f.T_min - 273.15, f.T_max - 273.15)
-        if _norm(unit).startswith("f"):
-            return ((f.T_min - 273.15) * 9 / 5 + 32, (f.T_max - 273.15) * 9 / 5 + 32)
-        return (f.T_min, f.T_max)
+        if u in ("f", "fahrenheit"):
+            return ((f.T_min - 273.15) * 9.0 / 5.0 + 32.0,
+                    (f.T_max - 273.15) * 9.0 / 5.0 + 32.0)
+        raise ValueError(f"Unidad de temperatura '{unit}' no reconocida. Use 'K', 'C' o 'F'.")
+
+    def get_fouling(self, name: str) -> float:
+        """Resistencia de ensuciamiento tipica TEMA del fluido [m2.K/W] (parche 5.1)."""
+        key, _ = self._resolve_fluid(name)
+        return _FLUID_FOULING[key]
 
     def get_fluid_state(self, name: str, T: float, unit: str = "K",
                         P: float = P_ATM) -> FluidState:

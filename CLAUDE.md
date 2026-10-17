@@ -13,7 +13,7 @@ Este proyecto está dividido en 4 pilares. **REGLA ESTRICTA:** Antes de ejecutar
 1. **Base de Datos Termofísica:**
    - 📂 Carpeta: `src/core/`
    - 📜 **LEE ANTES DE ACTUAR:** `src/core/INSTRUCCIONES_CORE.md`
-   - *Nota:* Una vez creado `thermo_data.py`, confía en su API. NO lo vuelvas a leer completo para ahorrar tokens. `errores.py` define `ErrorDiseno` (error estructurado con QUÉ PASÓ / POR QUÉ / SOLUCIÓN / REFERENCIA): úsalo en TODOS los `raise` de los módulos de cálculo para que la GUI muestre mensajes educativos.
+   - *Nota:* Una vez creado `thermo_data.py`, confía en su API. NO lo vuelvas a leer completo para ahorrar tokens.
 
 2. **Cálculos Térmicos (Método de Kern):**
    - 📂 Carpeta: `src/thermo/`

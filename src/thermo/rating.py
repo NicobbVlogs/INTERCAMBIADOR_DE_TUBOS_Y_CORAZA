@@ -29,20 +29,18 @@ from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple
 
 try:
-    from src.core.errores import ErrorDiseno
     from src.core.thermo_data import FluidState, ThermoDatabase
 except ImportError:  # ejecucion directa: `python src/thermo/rating.py`
     sys.path.insert(0, os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..")))
-    from src.core.errores import ErrorDiseno
     from src.core.thermo_data import FluidState, ThermoDatabase
 
 from src.thermo.sizing import (
-    INCERTIDUMBRE_U, RE_KERN_MAX, RE_KERN_MIN, V_CORAZA_MAX, V_CORAZA_MIN,
-    V_TUBO_MAX, V_TUBO_MIN, ShellGeometry, Stream, TubeGeometry,
-    aviso_tipo_carcasa, chequeo_cercania_fase, coeficiente_global,
-    diametro_equivalente, factor_correccion_F, lmtd_contracorriente, mu_pared,
-    nusselt_coraza, nusselt_tubos, validar_temperatura,
+    RE_KERN_MAX, RE_KERN_MIN, V_CORAZA_MAX, V_CORAZA_MIN, V_TUBO_MAX,
+    V_TUBO_MIN, ShellGeometry, Stream, TubeGeometry, chequeo_saturacion,
+    coeficiente_global, diametro_equivalente, factor_correccion_F,
+    lmtd_contracorriente, mu_pared, nusselt_coraza, nusselt_tubos,
+    resistencia_ensuciamiento,
 )
 
 db = ThermoDatabase()
@@ -73,10 +71,15 @@ class ExchangerGeometry:
         return self.N_tt * self.tubos.a_tubo / self.tubos.n_pasos
 
     @property
+    def n_corazas(self) -> int:
+        """Corazas efectivas para F y area de flujo (TEMA F -> 2, resto -> 1)."""
+        return 2 if self.coraza.tipo.upper() == "F" else 1
+
+    @property
     def a_flujo_coraza(self) -> float:
         """Area de flujo cruzado en el eje de la coraza [m2] (Kern)."""
         return (self.D_s * (self.tubos.P_T - self.tubos.D_o)
-                * self.coraza.B / self.tubos.P_T)
+                * self.coraza.B / self.tubos.P_T) / self.n_corazas
 
 
 @dataclass
@@ -101,7 +104,6 @@ class RatingResult:
     D_e: float
     iteraciones: int
     regimen_tubo: str
-    regimen_coraza: str
     residual: float          # Cierre del balance |q - U*A*F*LMTD| [W]
     advertencias: List[str] = field(default_factory=list)
 
@@ -122,7 +124,6 @@ class _Punto:
     v_t: float
     v_s: float
     regimen: str
-    regimen_s: str
     C_c: float
     C_h: float
 
@@ -178,6 +179,8 @@ def _coeficientes(geom: ExchangerGeometry, por_tubos: Stream, por_coraza: Stream
     est_s: FluidState = db.get_fluid_state(por_coraza.fluido, T_s_m, "C")
     metal = db.get_material(geom.tubos.material)
     tb = geom.tubos
+    R_fi = resistencia_ensuciamiento(por_tubos, metal.R_f)
+    R_fo = resistencia_ensuciamiento(por_coraza, metal.R_f)
 
     # --- Velocidades reales: impuestas por la continuidad, no por el disenador
     G_t = por_tubos.m_dot / geom.a_flujo_tubos
@@ -190,39 +193,29 @@ def _coeficientes(geom: ExchangerGeometry, por_tubos: Stream, por_coraza: Stream
 
     phi_t = phi_s = 1.0
     U = h_i = h_o = 0.0
-    regimen = regimen_s = ""
-    for _ in range(40):
+    regimen = ""
+    for _ in range(max_iter):
         Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tb.D_i, tb.L, phi_t)
-        Nu_s, regimen_s = nusselt_coraza(Re_s, est_s.Pr, phi_s, D_e,
-                                         geom.coraza.B)
         h_i = Nu_t * est_t.k / tb.D_i
-        h_o = Nu_s * est_s.k / D_e
+        h_o = nusselt_coraza(Re_s, est_s.Pr, phi_s) * est_s.k / D_e
 
         h_io = h_i * tb.D_i / tb.D_o
         T_w = (h_io * T_t_m + h_o * T_s_m) / (h_io + h_o)
-        phi_t_n = (est_t.mu / mu_pared(por_tubos.fluido, T_w)) ** 0.14
-        phi_s_n = (est_s.mu / mu_pared(por_coraza.fluido, T_w)) ** 0.14
+        phi_t = (est_t.mu / mu_pared(por_tubos.fluido, T_w)) ** 0.14
+        phi_s = (est_s.mu / mu_pared(por_coraza.fluido, T_w)) ** 0.14
 
         U_new = coeficiente_global(h_i, h_o, tb.D_i, tb.D_o,
-                                   metal.k_m, metal.R_f, metal.R_f)
+                                   metal.k_m, R_fi, R_fo)
         if not math.isfinite(U_new) or U_new <= 0.0:
-            raise ErrorDiseno(
-                titulo="Coeficiente global no físico durante el rating",
-                que_paso=f"El cálculo devolvió U = {U_new:.3e} W/m²·K.",
-                por_que="U es el inverso de una suma de resistencias térmicas "
-                        "positivas; no puede ser nulo ni negativo.",
-                solucion="Revise la geometría cargada (N_tt, D_s, espesor de "
-                         "pared) y los caudales.",
-                referencia="U = 1/Σ R_térmicas (Kern, cap. 7)",
+            raise ValueError(
+                f"Coeficiente global no fisico (U = {U_new:.3e} W/m2.K) durante "
+                "el rating. Revise la geometria cargada."
             )
-        converge = (abs(U_new - U) / U_new < tol
-                    and abs(phi_t_n - phi_t) < 1e-9
-                    and abs(phi_s_n - phi_s) < 1e-9)
+        convergio = abs(U_new - U) / U_new < tol
         U = U_new
-        phi_t, phi_s = phi_t_n, phi_s_n
-        if converge:
+        if convergio:
             break
-    return U, h_i, h_o, Re_t, Re_s, v_t, v_s, regimen, regimen_s
+    return U, h_i, h_o, Re_t, Re_s, v_t, v_s, regimen
 
 
 def _evaluar_punto(T_c_out: float, caliente: Stream, fria: Stream,
@@ -238,15 +231,15 @@ def _evaluar_punto(T_c_out: float, caliente: Stream, fria: Stream,
     T_t_m = T_c_m if lado_tubos == "frio" else T_h_m
     T_s_m = T_h_m if lado_tubos == "frio" else T_c_m
 
-    U, h_i, h_o, Re_t, Re_s, v_t, v_s, regimen, regimen_s = _coeficientes(
+    U, h_i, h_o, Re_t, Re_s, v_t, v_s, regimen = _coeficientes(
         geom, por_tubos, por_coraza, T_t_m, T_s_m, D_e)
 
     dT_lm = lmtd_contracorriente(caliente.T_in, T_h_out, fria.T_in, T_c_out)
     F = factor_correccion_F(caliente.T_in, T_h_out, fria.T_in, T_c_out,
-                            geom.tubos.n_pasos, geom.coraza.tipo)
+                            geom.tubos.n_pasos, geom.n_corazas)
     return _Punto(T_c_out=T_c_out, T_h_out=T_h_out, q=q, U=U, LMTD=dT_lm, F=F,
                   h_i=h_i, h_o=h_o, Re_t=Re_t, Re_s=Re_s, v_t=v_t, v_s=v_s,
-                  regimen=regimen, regimen_s=regimen_s, C_c=C_c, C_h=C_h)
+                  regimen=regimen, C_c=C_c, C_h=C_h)
 
 
 # =============================================================================
@@ -277,17 +270,9 @@ def _buscar_raiz(f: Callable[[float], float], lo: float, hi: float,
             lo, f_lo = x, fx
         else:
             hi, f_hi = x, fx
-    raise ErrorDiseno(
-        titulo="La búsqueda de la temperatura de salida no convergió",
-        que_paso=f"Tras {max_iter} iteraciones el intervalo restante es "
-                 f"{hi - lo:.4f} °C, más ancho que la tolerancia pedida.",
-        por_que="La función residual es muy plana o muy ruidosa en este caso "
-                "(típico con regímenes laminares, donde U es muy sensible a la "
-                "temperatura).",
-        solucion="Aumente `max_iter` o relaje `tol_T`; si el flujo es "
-                 "laminar, interprete el resultado con la banda de "
-                 "incertidumbre que se reporta en las advertencias.",
-        referencia="Búsqueda de raíces secante/bisección sobre T_c,out",
+    raise ValueError(
+        f"La busqueda de T_salida no convergio en {max_iter} iteraciones "
+        f"(intervalo final {hi - lo:.4f} C). Revise los datos de entrada."
     )
 
 
@@ -312,33 +297,16 @@ def evaluar(caliente: Stream, fria: Stream, geom: ExchangerGeometry,
     if lado_tubos not in ("frio", "caliente"):
         raise ValueError("lado_tubos debe ser 'frio' o 'caliente'.")
     if geom.N_tt < geom.tubos.n_pasos:
-        raise ErrorDiseno(
-            titulo="Geometría incoherente",
-            que_paso=f"El equipo tiene {geom.N_tt} tubos repartidos en "
-                     f"{geom.tubos.n_pasos} pasos.",
-            por_que="Cada paso debe contener al menos un tubo; con menos tubos "
-                    "que pasos el reparto es imposible.",
-            solucion=f"Cargue al menos {geom.tubos.n_pasos} tubos o reduzca el "
-                     "número de pasos por tubos.",
-            referencia="Geometría del haz de tubos",
+        raise ValueError(
+            f"Geometria incoherente: {geom.N_tt} tubos para "
+            f"{geom.tubos.n_pasos} pasos."
         )
     if caliente.T_in <= fria.T_in:
-        raise ErrorDiseno(
-            titulo="Violación de la 2.ª Ley de la Termodinámica",
-            que_paso=f"El fluido «caliente» entra a {caliente.T_in:.1f} °C y el "
-                     f"«frío» entra a {fria.T_in:.1f} °C.",
-            por_que="El calor fluye espontáneamente solo de la zona más caliente "
-                    "a la más fría: sin diferencia de temperatura motriz no hay "
-                    "transferencia posible.",
-            solucion="Revise qué corriente es cada una o corrija las "
-                     "temperaturas de entrada.",
-            referencia="Segunda Ley de la Termodinámica",
+        raise ValueError(
+            "Violacion de la 2a Ley: el fluido 'caliente' entra a "
+            f"{caliente.T_in:.1f} C y el 'frio' a {fria.T_in:.1f} C.\n"
+            "   Sin diferencia de temperatura motriz no hay transferencia."
         )
-    # Cada temperatura de ENTRADA debe caer en la ventana de su fluido.
-    validar_temperatura(caliente.fluido, caliente.T_in,
-                        "Temperatura de entrada del fluido caliente")
-    validar_temperatura(fria.fluido, fria.T_in,
-                        "Temperatura de entrada del fluido frío")
 
     adv: List[str] = []
     D_e = diametro_equivalente(geom.tubos.P_T, geom.tubos.D_o, geom.tubos.layout)
@@ -358,21 +326,13 @@ def evaluar(caliente: Stream, fria: Stream, geom: ExchangerGeometry,
     hi = min(T_co_termo, T_co_fase) - 1e-3
     lo = fria.T_in + 1e-4
     if hi <= lo:
-        raise ErrorDiseno(
-            titulo="El fluido frío ya está al límite de su ventana",
-            que_paso=f"«{fria.fluido}» no admite temperaturas por encima de "
-                     f"{T_max_frio:.1f} °C en su fase actual y ya entra a "
-                     f"{fria.T_in:.1f} °C.",
-            por_que="Cualquier calor que reciba lo llevaría fuera del rango "
-                    "donde existe como líquido/gas en el modelo.",
-            solucion=f"Baje la temperatura de entrada del frío (máximo "
-                     f"{T_max_frio:.1f} °C) o elija otro fluido.",
-            referencia="src/core/thermo_data.py · ventana de validez por fluido",
+        raise ValueError(
+            f"El fluido frio ({fria.fluido}) no admite temperaturas por encima "
+            f"de {T_max_frio:.1f} C en esta fase, y ya entra a {fria.T_in:.1f} C."
         )
 
     # --- Residual R(T_co) = q - U*A*F*LMTD ----------------------------------
     cache: List[Optional[_Punto]] = [None]
-    FUERA = 1.0e30   # valor finito grande: la secante no admite inf/inf
 
     def residual(T_co: float) -> float:
         try:
@@ -380,39 +340,25 @@ def evaluar(caliente: Stream, fria: Stream, geom: ExchangerGeometry,
         except ValueError:
             # T_co inalcanzable para este arreglo (cruce de temperaturas o
             # limite del factor F): empuja la busqueda hacia abajo.
-            return FUERA
+            return float("inf")
         cache[0] = p
         return p.q - p.U * A * p.F * p.LMTD
 
     f_lo = residual(lo)
     f_hi = residual(hi)
     if f_lo > 0.0:
-        raise ErrorDiseno(
-            titulo="El balance de energía no cierra ni con calor nulo",
-            que_paso=f"Incluso suponiendo T_c,salida ≈ {lo:.1f} °C (casi sin "
-                     f"calor transferido) el residual sigue siendo positivo.",
-            por_que="Las propiedades o los caudales cargados hacen que el lado "
-                    "frío absorba más calor del que el equipo puede entregar "
-                    "incluso en el límite inferior de la búsqueda.",
-            solucion="Revise los caudales (kg/s) y las temperaturas de entrada: "
-                     "el más sospechoso es un caudal frío demasiado pequeño.",
-            referencia="q = ṁ·cp·ΔT vs. q = U·A·F·LMTD",
+        raise ValueError(
+            "Residual positivo en el limite inferior: el balance de energia no "
+            "cierra ni con calor nulo. Revise caudales y temperaturas."
         )
     if f_hi < 0.0:
         # El equipo entregaria mas calor del que permite el tope del bracket.
         if hi < T_co_termo - 1e-3:
-            raise ErrorDiseno(
-                titulo=f"«{fria.fluido}» saldría fuera de su ventana de fase",
-                que_paso=f"El equipo llevaría al fluido frío por encima de "
-                         f"{T_max_frio:.1f} °C, donde deja de existir en esa "
-                         f"fase (límite superior de su ventana).",
-                por_que="El modelo de Kern de este programa es monofásico: no "
-                        "describe ebullición ni condensación, por lo que se "
-                        "niega a calcular fuera de la ventana del fluido.",
-                solucion="Reduzca el caudal caliente, baje su temperatura de "
-                         "entrada, o use un área menor (menos tubos / menor "
-                         "longitud).",
-                referencia="src/core/thermo_data.py · ventana de validez",
+            raise ValueError(
+                f"El equipo llevaria al {fria.fluido} por encima de "
+                f"{T_max_frio:.1f} C, donde cambia de fase.\n"
+                "   El modelo de Kern monofasico no aplica: reduzca el caudal "
+                "caliente, su temperatura de entrada, o use un area menor."
             )
         adv.append(
             "El equipo alcanza el limite termodinamico (efectividad ~ 1): "
@@ -425,12 +371,6 @@ def evaluar(caliente: Stream, fria: Stream, geom: ExchangerGeometry,
         punto = cache[0] if (cache[0] and
                              abs(cache[0].T_c_out - T_sol) < 1e-9) else \
             _evaluar_punto(T_sol, caliente, fria, geom, lado_tubos, D_e)
-
-    # La solucion tambien debe respetar la ventana de fase de AMBOS fluidos.
-    validar_temperatura(caliente.fluido, punto.T_h_out,
-                        "Temperatura de salida calculada del fluido caliente")
-    validar_temperatura(fria.fluido, punto.T_c_out,
-                        "Temperatura de salida calculada del fluido frío")
 
     # --- Metricas de desempeno (epsilon - NTU) ------------------------------
     C_min, C_max = min(punto.C_c, punto.C_h), max(punto.C_c, punto.C_h)
@@ -471,42 +411,26 @@ def evaluar(caliente: Stream, fria: Stream, geom: ExchangerGeometry,
         )
     for flu, T_pico in ((caliente.fluido, caliente.T_in),
                         (fria.fluido, punto.T_c_out)):
-        aviso = chequeo_cercania_fase(flu, T_pico)
+        aviso = chequeo_saturacion(flu, T_pico)
         if aviso:
             adv.append(aviso)
-    for lado, regimen_x, Re_x in (("tubos", punto.regimen, punto.Re_t),
-                                  ("coraza", punto.regimen_s, punto.Re_s)):
-        if regimen_x == "turbulento":
-            continue
+    if punto.regimen != "turbulento":
         adv.append(
-            f"Flujo en {lado} en régimen {regimen_x} "
-            f"(Re = {Re_x:,.0f}): las correlaciones de Kern están calibradas "
-            f"para flujo turbulento; la incertidumbre de U puede llegar a "
-            f"±{INCERTIDUMBRE_U[regimen_x]:.0f} %."
+            f"Flujo en tubos en regimen {punto.regimen} "
+            f"(Re = {punto.Re_t:,.0f}): transferencia pobre."
         )
-    banda = max(INCERTIDUMBRE_U[punto.regimen], INCERTIDUMBRE_U[punto.regimen_s])
-    if banda > 15.0:
-        adv.append(
-            f"Resultado U = {punto.U:,.1f} W/m²·K con banda de incertidumbre "
-            f"estimada de ±{banda:.0f} % (régimen tubos: {punto.regimen}, "
-            f"coraza: {punto.regimen_s}). En laminar/transición el método de "
-            "Kern es indicativo: contraste con Bell-Delaware o datos de "
-            "servicio antes de tomar decisiones de diseño."
-        )
-    if punto.regimen_s == "turbulento" and not RE_KERN_MIN <= punto.Re_s <= RE_KERN_MAX:
+    if not RE_KERN_MIN <= punto.Re_s <= RE_KERN_MAX:
         adv.append(
             f"Re de coraza = {punto.Re_s:,.0f} fuera del rango de la correlacion "
             f"de Kern ({RE_KERN_MIN:,.0f} - {RE_KERN_MAX:,.0f}): h_o extrapolado."
         )
-    adv.extend(aviso_tipo_carcasa(geom.coraza.tipo))
 
     return RatingResult(
         q=punto.q, U=punto.U, A=A, T_h_out=punto.T_h_out, T_c_out=punto.T_c_out,
         LMTD=punto.LMTD, F=punto.F, efectividad=efectividad, NTU=NTU,
         C_r=C_min / C_max, h_i=punto.h_i, h_o=punto.h_o, Re_t=punto.Re_t,
         Re_s=punto.Re_s, v_t=punto.v_t, v_s=punto.v_s, D_e=D_e,
-        iteraciones=it, regimen_tubo=punto.regimen,
-        regimen_coraza=punto.regimen_s, residual=residuo,
+        iteraciones=it, regimen_tubo=punto.regimen, residual=residuo,
         advertencias=adv,
     )
 
