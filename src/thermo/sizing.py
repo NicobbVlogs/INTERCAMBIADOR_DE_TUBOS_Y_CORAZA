@@ -22,7 +22,7 @@ from __future__ import annotations
 import math
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import List, Optional, Tuple
 
 try:
@@ -713,7 +713,8 @@ def dimensionar(caliente: Stream, fria: Stream,
                 U_inicial: float = 700.0,
                 tol: float = 1e-4,
                 max_iter: int = 100,
-                holgura_haz: float = 0.0) -> SizingResult:
+                holgura_haz: float = 0.0,
+                _busca_pasos: bool = True) -> SizingResult:
     """
     Dimensiona un intercambiador de tubos y coraza por el Metodo de Kern.
 
@@ -1068,7 +1069,7 @@ def dimensionar(caliente: Stream, fria: Stream,
             "El equipo resulta desproporcionado para su fabricacion."
         )
 
-    return SizingResult(
+    res = SizingResult(
         q=q, U=U, A=A, A_real=A_real, sobre_area=sobre_area, N_tt=N_tt,
         D_s=D_s, N_baffles=N_baffles, LMTD=dT_lm, F=F,
         T_h_out=T_h_out, T_c_out=T_c_out, h_i=h_i, h_o=h_o,
@@ -1077,6 +1078,50 @@ def dimensionar(caliente: Stream, fria: Stream,
         iteraciones=it, regimen_tubo=regimen, regimen_coraza=regimen_s,
         advertencias=adv,
     )
+
+    # --- Seleccion de pasos por ventana de velocidad (Kern) -----------------
+    # Kern disena eligiendo la velocidad del tubo dentro de la ventana
+    # recomendada; cuando la longitud del tubo es un dato, el numero de pasos
+    # es la unica palanca que fija esa velocidad. Si el punto fijo de U
+    # converge fuera de la ventana (tipico con pocos pasos: velocidades bajas,
+    # U bajo y por tanto demasiados tubos), se prueban los pasos estandar y se
+    # adopta el que entra en ventana con menos pasos.
+    if _busca_pasos and not (V_TUBO_MIN <= res.v_t <= V_TUBO_MAX):
+        candidatos = []
+        for np_cand in sorted(_C_TP):
+            if np_cand == tubos.n_pasos:
+                continue
+            try:
+                r_cand = dimensionar(
+                    caliente, fria,
+                    replace(tubos, n_pasos=np_cand), coraza,
+                    lado_tubos=lado_tubos, U_inicial=U_inicial, tol=tol,
+                    max_iter=max_iter, holgura_haz=holgura_haz,
+                    _busca_pasos=False,
+                )
+            except ErrorDiseno:
+                continue
+            if V_TUBO_MIN <= r_cand.v_t <= V_TUBO_MAX:
+                candidatos.append((np_cand, r_cand))
+        if candidatos:
+            np_cand, r_cand = min(candidatos, key=lambda x: x[0])
+            r_cand.advertencias.append(
+                f"Se ajustó el número de pasos de tubos de {tubos.n_pasos} a "
+                f"{np_cand}: Kern selecciona la velocidad dentro de la ventana "
+                f"recomendada ({V_TUBO_MIN} – {V_TUBO_MAX} m/s) y la longitud "
+                f"del tubo es un dato. Con {tubos.n_pasos} pasos la velocidad "
+                f"quedaba en {res.v_t:.3f} m/s y el diseño pedía {res.N_tt} "
+                f"tubos; con {np_cand} pasos queda en {r_cand.v_t:.3f} m/s y "
+                f"{r_cand.N_tt} tubos."
+            )
+            return r_cand
+        res.advertencias.append(
+            f"Velocidad en tubos {res.v_t:.3f} m/s fuera de la ventana "
+            f"recomendada ({V_TUBO_MIN} – {V_TUBO_MAX} m/s) y ningún número de "
+            "pasos estándar (1, 2, 4, 6, 8) la corrige con esta longitud de "
+            "tubo: el diseño queda penalizado."
+        )
+    return res
 
 
 def aviso_tipo_carcasa(tipo: str) -> List[str]:

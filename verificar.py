@@ -577,14 +577,14 @@ def probar_gui() -> None:
 # permite seguir detectando cualquier aviso NUEVO en cualquier ejemplo.
 AVISOS_ESPERADOS = {
     "09_sinnott_metanol_agua_sizing.bb": 2,
-    "10_karimi_metanol_agua_mar_sizing.bb": 3,
-    "11_janna_agua_agua_sizing.bb": 3,
+    "10_karimi_metanol_agua_mar_sizing.bb": 1,
+    "11_janna_agua_agua_sizing.bb": 1,
     "12_kern_ej74_agua_agua_sizing.bb": 1,
     "13_janna_agua_agua_rating.bb": 2,
     "14_kern_ej74_agua_agua_rating.bb": 1,
     "15_msubbu_metanol_agua_rating.bb": 2,
     "16_karimi_metanol_agua_mar_rating.bb": 1,
-    "06_tan_fok_sizing.bb": 7,
+    "06_tan_fok_sizing.bb": 8,
     "07_tan_fok_rating.bb": 4,
     "08_tan_fok_rating_parcial.bb": 4,
 }
