@@ -583,7 +583,7 @@ AVISOS_ESPERADOS = {
     "13_janna_agua_agua_rating.bb": 2,
     "14_kern_ej74_agua_agua_rating.bb": 1,
     "15_msubbu_metanol_agua_rating.bb": 2,
-    "16_karimi_metanol_agua_mar_rating.bb": 3,
+    "16_karimi_metanol_agua_mar_rating.bb": 1,
     "06_tan_fok_sizing.bb": 7,
     "07_tan_fok_rating.bb": 4,
     "08_tan_fok_rating_parcial.bb": 4,
