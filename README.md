@@ -24,7 +24,7 @@ Para comprobar que todo funciona correctamente:
 py verificar.py
 ```
 
-Ese comando ejecuta 138 pruebas sobre todas las fases y termina diciendo
+Ese comando ejecuta 153 pruebas sobre todas las fases y termina diciendo
 `TODO CORRECTO` o enumerando las fallas.
 
 ---
@@ -57,7 +57,7 @@ src/
     widgets.py              Campos validados, tooltips, tablas
     drawings.py             Vistas paramétricas sobre Canvas
     io_state.py             Proyectos .he (JSON)
-ejemplos/      5 proyectos .he verificados
+ejemplos/      11 proyectos .bb verificados (8 de literatura + 3 de Tan y Fok)
 verificar.py   Suite de verificación de las 4 fases
 ejecutar.bat   Lanzador para Windows
 ```

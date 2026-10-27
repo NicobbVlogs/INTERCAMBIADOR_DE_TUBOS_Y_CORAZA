@@ -624,7 +624,7 @@ corregir el factor de compresibilidad \cite{nist}.
 validacion.
 \item Para diseno en regimen laminar, la incertidumbre de los coeficientes de
 conveccion domina sobre la de las propiedades: el programa reporta bandas de
-hasta $\pm 40\,\%$ sobre $U$ en esos casos.
+hasta $\pm 25\,\%$ sobre $U$ en esos casos.
 \end{enumerate}
 
 \section{Bibliografia}
