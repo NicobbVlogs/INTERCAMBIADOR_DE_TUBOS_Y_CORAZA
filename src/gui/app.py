@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# © 2026 Diego Nicolás Bohórquez Barón · propiedad intelectual del autor.
 """
 app.py - Ventana principal del software educativo de intercambiadores
          de tubos y coraza (Método de Kern / estándar TEMA Clase C).
@@ -32,13 +33,21 @@ if __package__ in (None, ""):                 # ejecución directa del archivo
 from src.gui import controller as ctrl
 from src.gui import drawings, io_state
 from src.core.errores import ErrorDiseno
-from src.gui.widgets import (COLOR_ACENTO, COLOR_FONDO, COLOR_NOTA,
-                             COLOR_TITULO, CampoInvalido, CampoLista,
-                             CampoNumerico, Formulario, MarcoScroll,
-                             llenar_tabla, tabla_resultados)
+import customtkinter as ctk
+
+from src.gui.widgets import (COLOR_ACENTO, COLOR_BORDE, COLOR_CARMESI,
+                             COLOR_CARMESI_CLARO, COLOR_FONDO, COLOR_NARANJA,
+                             COLOR_NOTA,
+                             COLOR_SECCION, COLOR_TITULO, CampoInvalido,
+                             CampoLista, CampoNumerico, Formulario, MarcoScroll,
+                             Tooltip, bloque, boton, llenar_tabla, rotulo,
+                             tabla_resultados)
 
 TITULO = "Intercambiador de Tubos y Coraza · Método de Kern / TEMA"
-RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if getattr(sys, "frozen", False):          # empaquetado con PyInstaller
+    RAIZ = sys._MEIPASS                    # los datos viajan dentro del .exe
+else:
+    RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DIR_EJEMPLOS = os.path.join(RAIZ, "ejemplos")
 
 # Caso base de arranque: agua-agua, tubos de cobre 3/4 in BWG 16, pitch 1 in
@@ -52,18 +61,45 @@ VALORES_DEFECTO: Dict[str, Any] = {
     "layout": "Triangular 30°", "n_pasos": "2", "mat_tubo": "Cobre",
     "tipo_carcasa": "E", "baffle_mm": 305.0, "corte_pct": 25.0,
     "u_inicial": 700.0,
+    "dp_t_max": "", "dp_s_max": "",
     "cab_frontal": "A", "cab_trasero": "M",
     "p_coraza_bar": 10.0, "p_tubos_bar": 10.0,
     "mat_carcasa": "Acero al carbono", "corrosion_mm": 3.2, "d_perno_mm": 19.05,
     "n_tt": 500, "d_s_mm": 630.0,
 }
 
+# Ayudas del modo de trabajo (paso 1 de la hoja de diseño).
+AYUDAS_MODO = {
+    "sizing": (
+        "Modo SIZING — el programa propone la geometría (n.º de tubos, coraza "
+        "y área). Necesita: corrientes con temperaturas de entrada y UNA «T "
+        "salida» (deje vacía la incógnita del balance q = ṁ·cp·ΔT), la "
+        "geometría de tubo deseada, baffles, configuración TEMA, condiciones "
+        "mecánicas, la semilla de U y las caídas de presión máximas "
+        "permisibles."),
+    "rating": (
+        "Modo RATING — evalúa un equipo YA CONSTRUIDO. Necesita: corrientes "
+        "con las DOS «T salida» vacías (el programa las calcula), la "
+        "geometría existente (N.º de tubos y Ø interior de coraza) y el resto "
+        "de datos geométricos, TEMA y mecánicos."),
+    "avanzado": (
+        "Modo AVANZADO («otras») — formulario completo con todos los campos, "
+        "igual que la hoja original: útil para controlar sizing y rating a la "
+        "vez o para trabajar con proyectos mixtos."),
+}
 
-class Aplicacion(tk.Tk):
+
+class Aplicacion(ctk.CTk):
     # ------------------------------------------------------------------ init
     def __init__(self) -> None:
         super().__init__()
         self.title(TITULO)
+        # Icono de la aplicacion (ventana y barra de tareas). En el .exe
+        # empaquetado viaja junto al programa dentro del bundle.
+        try:
+            self.iconbitmap(os.path.join(RAIZ, "MIQUITO.ico"))
+        except tk.TclError:
+            pass
         self.geometry("1180x780")
         self.minsize(1020, 660)
         self.configure(bg=COLOR_FONDO)
@@ -94,10 +130,10 @@ class Aplicacion(tk.Tk):
         self._tab_drawing()
         self._tab_help()
 
-        self.estado = tk.StringVar(value="Listo. Complete los datos y pulse "
-                                         "«Dimensionar (Sizing)».")
-        ttk.Label(self, textvariable=self.estado, relief="sunken",
-                  anchor="w", padding=(8, 3)).pack(fill="x", padx=8, pady=(0, 8))
+        self.estado = tk.StringVar(value="Listo. Elija el modo de trabajo "
+                                         "arriba y complete los datos.")
+        rotulo(self, textvariable=self.estado, style="Estado.TLabel",
+                  anchor="w").pack(fill="x", padx=8, pady=(0, 8))
 
         self._restaurar_defecto()
         self.protocol("WM_DELETE_WINDOW", self._salir)
@@ -109,22 +145,23 @@ class Aplicacion(tk.Tk):
                 "cálculo:\n\n" + ctrl.ERROR_IMPORT))
 
     def _estilo(self) -> None:
+        ctk.set_appearance_mode("light")
         estilo = ttk.Style(self)
         if "clam" in estilo.theme_names():
             estilo.theme_use("clam")
-        estilo.configure(".", background=COLOR_FONDO, font=("Segoe UI", 9))
+        estilo.configure(".", background=COLOR_FONDO, font=("Segoe UI", 12))
         estilo.configure("TNotebook.Tab", padding=(16, 7),
-                         font=("Segoe UI", 9, "bold"),
+                         font=("Segoe UI", 12, "bold"),
                          background="#e4daf2", foreground=COLOR_TITULO)
         estilo.map("TNotebook.Tab",
                    background=[("selected", COLOR_ACENTO)],
                    foreground=[("selected", "white")])
         estilo.configure("TLabelframe", background=COLOR_FONDO, borderwidth=1)
         estilo.configure("TLabelframe.Label", foreground=COLOR_TITULO,
-                         font=("Segoe UI", 9, "bold"))
+                         font=("Segoe UI", 12, "bold"))
         estilo.configure("TFrame", background=COLOR_FONDO)
         estilo.configure("TLabel", background=COLOR_FONDO)
-        estilo.configure("Accion.TButton", font=("Segoe UI", 9, "bold"),
+        estilo.configure("Accion.TButton", font=("Segoe UI", 12, "bold"),
                          padding=(12, 7), background=COLOR_ACENTO,
                          foreground="white", borderwidth=0)
         estilo.map("Accion.TButton",
@@ -134,14 +171,35 @@ class Aplicacion(tk.Tk):
         estilo.configure("TButton", padding=(8, 5), background="#e4daf2")
         estilo.map("TButton", background=[("active", "#d7c7ee")])
         estilo.configure("Treeview", rowheight=21, fieldbackground="white")
-        estilo.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"),
+        estilo.configure("Treeview.Heading", font=("Segoe UI", 12, "bold"),
                          background=COLOR_ACENTO, foreground="white")
         estilo.configure("Titulo.TLabel", foreground=COLOR_TITULO,
-                         font=("Segoe UI", 13, "bold"))
+                         font=("Segoe UI", 16, "bold"))
+        estilo.configure("Subtitulo.TLabel", foreground=COLOR_NOTA,
+                         font=("Segoe UI", 12))
         estilo.configure("Nota.TLabel", foreground=COLOR_NOTA,
-                         font=("Segoe UI", 8))
+                         font=("Segoe UI", 11))
         estilo.configure("Designacion.TLabel", foreground=COLOR_ACENTO,
-                         font=("Segoe UI", 10, "bold"))
+                         font=("Segoe UI", 12, "bold"))
+        # Tarjetas y banner del encabezado.
+        estilo.configure("Banner.TLabel", background=COLOR_TITULO,
+                         foreground="white", font=("Segoe UI", 14, "bold"))
+        estilo.configure("BannerNota.TLabel", background=COLOR_TITULO,
+                         foreground="#d9c9f2", font=("Segoe UI", 12))
+        # Botones de acción con hover.
+        estilo.configure("Accion2.TButton", font=("Segoe UI", 12, "bold"),
+                         padding=(12, 7), background="white",
+                         foreground=COLOR_TITULO, borderwidth=1)
+        estilo.map("Accion2.TButton",
+                   background=[("active", "#ede7f6")],
+                   foreground=[("active", COLOR_TITULO)])
+        estilo.configure("Suave.TButton", font=("Segoe UI", 12),
+                         padding=(10, 6), background="#e4daf2")
+        estilo.map("Suave.TButton", background=[("active", "#d7c7ee")])
+        estilo.configure("Estado.TLabel", background="#ede7f6",
+                         foreground=COLOR_TITULO, font=("Segoe UI", 12, "bold"),
+                         relief="sunken", padding=(8, 4))
+        estilo.configure("TNotebook", borderwidth=0)
 
     # ------------------------------------------------------------------ menú
     def _crear_menu(self) -> None:
@@ -195,38 +253,57 @@ class Aplicacion(tk.Tk):
         self.bind("<Control-n>", lambda e: self._nuevo())
         self.bind("<Control-o>", lambda e: self._abrir())
         self.bind("<Control-s>", lambda e: self._guardar())
-        self.bind("<F5>", lambda e: self._calcular_async("sizing"))
-        self.bind("<F6>", lambda e: self._calcular_async("rating"))
+        self.bind("<F5>", lambda e: self._tecla_calcular("sizing"))
+        self.bind("<F6>", lambda e: self._tecla_calcular("rating"))
 
     def _menu_ejemplos(self, padre) -> tk.Menu:
-        """Submenú con los proyectos .he verificados que acompañan al programa."""
+        """Submenú con los proyectos .bb verificados: sizing y rating."""
         menu = tk.Menu(padre, tearoff=0)
-        try:
-            archivos = sorted(a for a in os.listdir(DIR_EJEMPLOS)
-                              if a.endswith(io_state.EXTENSION))
-        except OSError:
-            archivos = []
-        if not archivos:
+        encontrados = False
+        for carpeta, etiqueta in (("sizing", "Sizing (dimensionar)"),
+                                  ("rating", "Rating (evaluar)")):
+            ruta_grupo = os.path.join(DIR_EJEMPLOS, carpeta)
+            try:
+                archivos = sorted(a for a in os.listdir(ruta_grupo)
+                                  if a.endswith(io_state.EXTENSION))
+            except OSError:
+                archivos = []
+            if not archivos:
+                continue
+            encontrados = True
+            sub = tk.Menu(menu, tearoff=0)
+            for archivo in archivos:
+                ruta = os.path.join(ruta_grupo, archivo)
+                texto = io_state.descripcion_de(ruta) or archivo
+                sub.add_command(label=texto,
+                                command=lambda r=ruta: self._cargar_ejemplo(r))
+            menu.add_cascade(label=etiqueta, menu=sub)
+        if not encontrados:
             menu.add_command(label="(no se encontró la carpeta «ejemplos»)",
                              state="disabled")
-            return menu
-        for archivo in archivos:
-            ruta = os.path.join(DIR_EJEMPLOS, archivo)
-            etiqueta = io_state.descripcion_de(ruta) or archivo
-            menu.add_command(label=etiqueta,
-                             command=lambda r=ruta: self._cargar_ejemplo(r))
         return menu
 
     def _cargar_ejemplo(self, ruta: str) -> None:
-        """Carga un ejemplo y lo calcula de inmediato (demostración directa)."""
+        """Carga un ejemplo, elige su modo (sizing/rating) y lo calcula."""
+        resultado = {"modo": "sizing", "ok": False}
+
         def accion():
-            self.form.cargar(io_state.abrir(ruta))
+            datos = io_state.abrir(ruta)
+            self.form.cargar(datos)
+            resultado["modo"] = ctrl.modo_calculo(datos)
+            resultado["ok"] = True
             self.ruta_actual = None        # evita sobrescribir el ejemplo
+            self._cambiar_modo(resultado["modo"])
             self._actualizar_limites()
             self._actualizar_designacion_tema()
             self.title(f"{TITULO}  —  {os.path.basename(ruta)}")
         self._blindar(accion, "Apertura del ejemplo")
-        self._calcular_sizing()
+        if not resultado["ok"]:
+            return
+        if resultado["modo"] == "rating":
+            self._calcular_rating()
+        else:
+            self._calcular_sizing()
 
     # =================================================================== tabs
     def _tab_design(self) -> None:
@@ -236,27 +313,151 @@ class Aplicacion(tk.Tk):
         raiz.columnconfigure(0, weight=1, uniform="col")
         raiz.columnconfigure(1, weight=1, uniform="col")
 
-        ttk.Label(raiz, text="Hoja de diseño térmico y mecánico",
-                  style="Titulo.TLabel").grid(row=0, column=0, columnspan=2,
-                                              sticky="w", padx=6, pady=(8, 2))
-        ttk.Label(raiz, style="Nota.TLabel", text=(
-            "Flujo de trabajo: 1) corrientes del proceso · 2) geometría del "
-            "tubo y la coraza · 3) configuración TEMA · 4) condiciones "
-            "mecánicas. Deje VACÍA una de las dos temperaturas de salida: es "
-            "la incógnita que resuelve el balance de energía q = m·cp·ΔT.")
-        ).grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 6))
+        banner = ctk.CTkFrame(raiz, fg_color=COLOR_TITULO, corner_radius=16)
+        banner.grid(row=0, column=0, columnspan=2, sticky="ew", padx=6,
+                    pady=(8, 0))
+        rotulo(banner, text="Hoja de diseño térmico y mecánico",
+               style="Banner.TLabel").pack(anchor="w", padx=18, pady=(14, 0))
+        rotulo(banner,
+               text="Método de Kern   ·   TEMA Clase C   ·   Unidades SI",
+               style="BannerNota.TLabel").pack(anchor="w", padx=18,
+                                               pady=(2, 12))
+        # Barra de acento bicolor: carmesí + naranja.
+        acento = ctk.CTkFrame(banner, fg_color="transparent", height=6)
+        acento.pack(fill="x", side="bottom")
+        ctk.CTkFrame(acento, fg_color=COLOR_CARMESI, height=6,
+                     corner_radius=0).pack(side="left", fill="x", expand=True)
+        ctk.CTkFrame(acento, fg_color=COLOR_NARANJA, height=6,
+                     corner_radius=0).pack(side="left", fill="x", expand=True)
+
+        # --- Paso 1: la interfaz pregunta primero el modo de trabajo -------
+        self._bloque_modo(raiz, fila=1)
 
         self._bloque_corrientes(raiz, fila=2)      # 1 · 2
         self._bloque_tubos(raiz, fila=3)           # 3  (columna 0)
         self._bloque_coraza(raiz, fila=3)          # 4  (columna 1)
         self._bloque_tema(raiz, fila=4)            # 5  (columna 0)
         self._bloque_mecanico(raiz, fila=4)        # 6  (columna 1)
-        self._bloque_botones(raiz, fila=5)
+        self._bloque_sizing(raiz, fila=5)          # A  (columna 0)
+        self._bloque_rating(raiz, fila=5)          # B  (columna 1)
+        self._bloque_botones(raiz, fila=6)
+        self._cambiar_modo()                       # aplica el modo inicial
+
+    # ------------------------------------------------------- modo de trabajo
+    def _bloque_modo(self, padre, fila: int) -> None:
+        """Paso 1: el usuario elige Sizing, Rating u Otras (formulario completo)."""
+        marco = bloque(
+            padre, text="1 · ¿Qué desea hacer?", padding=(10, 8))
+        marco.grid(row=fila, column=0, columnspan=2, sticky="ew", padx=6,
+                   pady=(2, 4))
+        for c in range(3):
+            marco.columnconfigure(c, weight=1)
+
+        self.modo_var = tk.StringVar(value="sizing")
+        self._tarjetas_modo: Dict[str, tuple] = {}
+        tarjetas = (
+            ("sizing", "DIMENSIONAR",
+             "un equipo nuevo  ·  Sizing",
+             "El programa propone la geometría: n.º de tubos, coraza y área."),
+            ("rating", "EVALUAR",
+             "un equipo existente  ·  Rating",
+             "El programa calcula las temperaturas de salida del equipo."),
+            ("avanzado", "OTRAS",
+             "formulario completo  ·  avanzado",
+             "Todos los campos a la vez, como en el menú clásico."),
+        )
+        for i, (valor, titulo, sub, nota) in enumerate(tarjetas):
+            tarjeta = ctk.CTkFrame(marco, fg_color="white", corner_radius=14,
+                                   border_width=2, border_color=COLOR_BORDE,
+                                   cursor="hand2")
+            tarjeta.grid(row=0, column=i, sticky="nsew", padx=5, pady=4)
+            lineas = []
+            for texto, fuente, color in (
+                    (titulo, ("Segoe UI", 14, "bold"),
+                     COLOR_TITULO),
+                    (sub, ("Segoe UI", 12, "bold"), COLOR_CARMESI),
+                    (nota, ("Segoe UI", 11), COLOR_NOTA)):
+                lin = ctk.CTkLabel(tarjeta, text=texto, fg_color="white",
+                                   text_color=color, font=fuente,
+                                   cursor="hand2", justify="left",
+                                   wraplength=270)
+                lin.pack(anchor="w", padx=14,
+                         pady=((12, 0) if not lineas else (0, 0)))
+                lineas.append(lin)
+            lineas[-1].pack_configure(pady=(2, 12))
+            self._tarjetas_modo[valor] = (tarjeta, lineas)
+            for wdg in (tarjeta, *lineas):
+                wdg.bind("<Button-1>",
+                         lambda e, v=valor: self._elegir_modo(v))
+                wdg.bind("<Enter>",
+                         lambda e, v=valor: self._hover_tarjeta(v, True))
+                wdg.bind("<Leave>",
+                         lambda e, v=valor: self._hover_tarjeta(v, False))
+
+        self.lbl_ayuda_modo = rotulo(
+            marco, style="Nota.TLabel", wraplength=1020, justify="left")
+        self.lbl_ayuda_modo.grid(row=1, column=0, columnspan=3,
+                                 sticky="w", padx=6, pady=(8, 0))
+        self._cambiar_modo()
+
+    def _elegir_modo(self, modo: str) -> None:
+        self.modo_var.set(modo)
+        self._cambiar_modo()
+
+    def _hover_tarjeta(self, modo: str, entra: bool) -> None:
+        """Resalta la tarjeta bajo el cursor (sin cambiar la selección)."""
+        if self.modo_var.get() == modo:
+            return
+        tarjeta, _ = self._tarjetas_modo[modo]
+        tarjeta.configure(border_color=COLOR_NARANJA if entra
+                          else COLOR_BORDE)
+
+    def _pintar_tarjetas(self) -> None:
+        """Pinta la tarjeta del modo elegido (selección tipo tarjeta)."""
+        for valor, (tarjeta, lineas) in self._tarjetas_modo.items():
+            activa = self.modo_var.get() == valor
+            fondo = COLOR_CARMESI_CLARO if activa else "white"
+            tarjeta.configure(fg_color=fondo,
+                              border_color=COLOR_CARMESI if activa
+                              else COLOR_BORDE,
+                              border_width=2 if activa else 1)
+            for i, lin in enumerate(lineas):
+                if i == 0:
+                    color = COLOR_CARMESI if activa else COLOR_TITULO
+                elif i == 1:
+                    color = COLOR_NARANJA if activa else COLOR_CARMESI
+                else:
+                    color = COLOR_NOTA
+                lin.configure(fg_color=fondo, text_color=color)
+
+    def _cambiar_modo(self, modo: Optional[str] = None) -> None:
+        """Aplica el modo elegido: muestra solo los bloques de datos que tocan."""
+        if modo:
+            self.modo_var.set(modo)
+        m = self.modo_var.get()
+        self.lbl_ayuda_modo.configure(text=AYUDAS_MODO.get(m, ""))
+        if hasattr(self, "_tarjetas_modo"):
+            self._pintar_tarjetas()
+        self._empaquetar_botones()
+        if not hasattr(self, "marco_sizing"):
+            return                    # aún se están creando los bloques
+        if m == "rating":
+            self.marco_sizing.grid_remove()
+            self.marco_rating.grid()
+        elif m == "sizing":
+            self.marco_sizing.grid()
+            self.marco_rating.grid_remove()
+        else:                                    # «otras»: todo, como antes
+            self.marco_sizing.grid()
+            self.marco_rating.grid()
+        if hasattr(self, "estado"):
+            self.estado.set(
+                f"Modo {m.upper()} · {AYUDAS_MODO.get(m, '')[:110]}…")
 
     # ---------------------------------------------------------- bloques UI
     def _marco(self, padre, titulo: str, fila: int, columna: int,
                colspan: int = 1) -> ttk.LabelFrame:
-        marco = ttk.LabelFrame(padre, text=titulo, padding=(8, 6))
+        marco = bloque(padre, text=titulo, padding=(8, 6))
         marco.grid(row=fila, column=columna, columnspan=colspan, sticky="nsew",
                    padx=6, pady=5)
         marco.columnconfigure(1, weight=1)
@@ -266,11 +467,11 @@ class Aplicacion(tk.Tk):
         f = self.form
         fluidos = ctrl.fluidos()
 
-        cal = self._marco(padre, "1 · Corriente CALIENTE", fila, 0)
+        cal = self._marco(padre, "2 · Corriente CALIENTE", fila, 0)
         f.add("fluido_cal", CampoLista(
             cal, 0, "Fluido", fluidos, ayuda="Base de datos termofísica de "
             "alta fidelidad (src/core).", comando=self._actualizar_limites))
-        self.lbl_lim_cal = ttk.Label(cal, style="Nota.TLabel", text="")
+        self.lbl_lim_cal = rotulo(cal, style="Nota.TLabel", text="")
         self.lbl_lim_cal.grid(row=1, column=0, columnspan=3, sticky="w", padx=6)
         f.add("m_cal", CampoNumerico(cal, 2, "Caudal másico", "kg/s",
                                      minimo=1e-6, grupo="corriente caliente",
@@ -281,11 +482,11 @@ class Aplicacion(tk.Tk):
             cal, 4, "T salida", "°C", opcional=True, grupo="corriente caliente",
             ayuda="Opcional: deje vacío si es la incógnita del balance."))
 
-        fri = self._marco(padre, "2 · Corriente FRÍA", fila, 1)
+        fri = self._marco(padre, "3 · Corriente FRÍA", fila, 1)
         f.add("fluido_fri", CampoLista(
             fri, 0, "Fluido", fluidos, valor="Agua",
             comando=self._actualizar_limites))
-        self.lbl_lim_fri = ttk.Label(fri, style="Nota.TLabel", text="")
+        self.lbl_lim_fri = rotulo(fri, style="Nota.TLabel", text="")
         self.lbl_lim_fri.grid(row=1, column=0, columnspan=3, sticky="w", padx=6)
         f.add("m_fri", CampoNumerico(fri, 2, "Caudal másico", "kg/s",
                                      minimo=1e-6, grupo="corriente fría"))
@@ -296,7 +497,7 @@ class Aplicacion(tk.Tk):
 
     def _bloque_tubos(self, padre, fila: int) -> None:
         f = self.form
-        m = self._marco(padre, "3 · Haz de tubos", fila, 0)
+        m = self._marco(padre, "4 · Haz de tubos", fila, 0)
         f.add("lado_tubos", CampoLista(
             m, 0, "Fluido por los TUBOS", ctrl.LADOS, valor="frio",
             ayuda="Por los tubos suele ir el fluido más sucio, corrosivo o "
@@ -324,7 +525,7 @@ class Aplicacion(tk.Tk):
 
     def _bloque_coraza(self, padre, fila: int) -> None:
         f = self.form
-        m = self._marco(padre, "4 · Coraza, deflectores y cálculo", fila, 1)
+        m = self._marco(padre, "5 · Coraza y deflectores", fila, 1)
         f.add("baffle_mm", CampoNumerico(
             m, 0, "Espaciado de baffles B", "mm", minimo=10.0,
             ayuda="Buena práctica: 0.3·D_s ≤ B ≤ 1.0·D_s. Como D_s es un "
@@ -333,30 +534,53 @@ class Aplicacion(tk.Tk):
         # B es dato de entrada del térmico pero su ventana válida depende de
         # D_s, que es resultado: este botón cierra el lazo a mano, sin que la
         # GUI calcule nada.
-        ttk.Button(m, text="½·D_s", width=6, command=self._ajustar_baffle
+        boton(m, text="½·D_s", width=6, command=self._ajustar_baffle
                    ).grid(row=0, column=3, padx=(0, 6))
         f.add("corte_pct", CampoNumerico(m, 1, "Corte de baffle", "%",
                                          minimo=15.0, maximo=45.0,
                                          ayuda="Estándar: 25 %."))
+
+    def _bloque_sizing(self, padre, fila: int) -> None:
+        """A · Datos que solo necesita el dimensionamiento (sizing)."""
+        f = self.form
+        self.marco_sizing = m = self._marco(
+            padre, "A · SOLO DIMENSIONAR (Sizing)", fila, 0)
         f.add("u_inicial", CampoNumerico(
-            m, 2, "U inicial (semilla)", "W/m²K", minimo=10.0, maximo=10000.0,
+            m, 0, "U inicial (semilla)", "W/m²K", minimo=10.0, maximo=10000.0,
             ayuda="Solo es la semilla de la iteración de Kern; no altera el "
                   "resultado convergido."))
-
-        ttk.Separator(m, orient="horizontal").grid(
-            row=3, column=0, columnspan=3, sticky="ew", pady=6)
-        ttk.Label(m, text="Equipo existente (solo para Rating)",
-                  style="Nota.TLabel").grid(row=4, column=0, columnspan=3,
+        rotulo(m, text="Límites permisibles de Δp (verificación hidráulica)",
+                  style="Nota.TLabel").grid(row=1, column=0, columnspan=3,
                                             sticky="w", padx=6)
-        f.add("n_tt", CampoNumerico(m, 5, "N.º total de tubos", "–",
-                                    minimo=1, entero=True))
-        f.add("d_s_mm", CampoNumerico(m, 6, "Ø interior de coraza", "mm",
+        f.add("dp_t_max", CampoNumerico(
+            m, 2, "Δp máx. en tubos", "Pa", minimo=0.0, opcional=True,
+            ayuda="Si la Δp calculada lo supera, el programa advierte que hay "
+                  "que revisar o redimensionar el equipo. Vacío o 0 = sin límite."))
+        f.add("dp_s_max", CampoNumerico(
+            m, 3, "Δp máx. en coraza", "Pa", minimo=0.0, opcional=True,
+            ayuda="Misma verificación para el lado coraza. Vacío o 0 = sin límite."))
+
+    def _bloque_rating(self, padre, fila: int) -> None:
+        """B · Datos que solo necesita la evaluación (rating)."""
+        f = self.form
+        self.marco_rating = m = self._marco(
+            padre, "B · SOLO EVALUAR (Rating)", fila, 1)
+        f.add("n_tt", CampoNumerico(m, 0, "N.º total de tubos", "–",
+                                    minimo=1, entero=True,
+                                    ayuda="Geometría real del equipo existente."))
+        f.add("d_s_mm", CampoNumerico(m, 1, "Ø interior de coraza", "mm",
                                       minimo=50.0))
+        rotulo(m, style="Nota.TLabel", wraplength=430, justify="left",
+                  text="Geometría del equipo YA CONSTRUIDO. En modo rating las "
+                       "temperaturas de salida son las incógnitas: déjelas "
+                       "vacías en las corrientes."
+                  ).grid(row=2, column=0, columnspan=3, sticky="w",
+                         padx=6, pady=(4, 0))
 
     def _bloque_tema(self, padre, fila: int) -> None:
         """5 · Tipos TEMA: la designación de tres letras (Fig. N-1.2)."""
         f = self.form
-        m = self._marco(padre, "5 · Configuración TEMA (Fig. N-1.2)", fila, 0)
+        m = self._marco(padre, "6 · Configuración TEMA (Fig. N-1.2)", fila, 0)
         f.add("tipo_carcasa", CampoLista(
             m, 0, "Carcasa", ctrl.TIPOS_CARCASA, valor="E",
             ayuda="E = una pasada · F = dos con deflector longitudinal · "
@@ -370,9 +594,9 @@ class Aplicacion(tk.Tk):
             m, 2, "Cabezal trasero", ctrl.CABEZAL_TRASERO, valor="M",
             ayuda="L/M/N (espejo fijo) · P/S/T/W (flotantes) · U (haz en U).",
             comando=self._actualizar_designacion_tema))
-        ttk.Label(m, text="Designación TEMA:", style="Nota.TLabel"
+        rotulo(m, text="Designación TEMA:", style="Nota.TLabel"
                   ).grid(row=3, column=0, sticky="w", padx=(6, 8), pady=(6, 0))
-        self.lbl_designacion = ttk.Label(
+        self.lbl_designacion = rotulo(
             m, text="AEM", style="Designacion.TLabel")
         self.lbl_designacion.grid(row=3, column=1, columnspan=2,
                                   sticky="w", pady=(6, 0))
@@ -388,7 +612,7 @@ class Aplicacion(tk.Tk):
 
     def _bloque_mecanico(self, padre, fila: int) -> None:
         f = self.form
-        m = self._marco(padre, "6 · Condiciones de diseño y materiales",
+        m = self._marco(padre, "7 · Condiciones de diseño y materiales",
                         fila, 1)
         for c in (1, 4):
             m.columnconfigure(c, weight=1)
@@ -410,17 +634,42 @@ class Aplicacion(tk.Tk):
         barra = ttk.Frame(padre)
         barra.grid(row=fila, column=0, columnspan=2, sticky="ew", padx=6,
                    pady=(4, 14))
-        b_sizing = ttk.Button(barra, text="▶  Dimensionar (Sizing)  F5",
+        b_sizing = boton(barra, text="Calcular dimensionamiento   (F5)",
                               style="Accion.TButton",
                               command=lambda: self._calcular_async("sizing"))
-        b_sizing.pack(side="left", padx=(0, 8))
-        b_rating = ttk.Button(barra, text="◆  Evaluar equipo (Rating)  F6",
-                              style="Accion.TButton",
+        b_rating = boton(barra, text="Calcular evaluación   (F6)",
+                              style="Accion2.TButton",
                               command=lambda: self._calcular_async("rating"))
-        b_rating.pack(side="left", padx=8)
+        self.b_sizing, self.b_rating = b_sizing, b_rating
         self._botones_calculo = [b_sizing, b_rating]
-        ttk.Button(barra, text="Restaurar caso base",
+        boton(barra, text="Restaurar caso base", style="Suave.TButton",
                    command=self._restaurar_defecto).pack(side="right")
+        self._empaquetar_botones()
+
+    def _empaquetar_botones(self) -> None:
+        """Modo estricto: cada modo muestra solo su botón de cálculo."""
+        if not hasattr(self, "b_sizing"):
+            return
+        m = self.modo_var.get()
+        self.b_sizing.pack_forget()
+        self.b_rating.pack_forget()
+        if m in ("sizing", "avanzado"):
+            self.b_sizing.pack(side="left", padx=(0, 8))
+        if m in ("rating", "avanzado"):
+            self.b_rating.pack(side="left", padx=8 if m == "avanzado" else 0)
+
+    def _tecla_calcular(self, modo: str) -> None:
+        """F5/F6 respetan el modo de trabajo elegido en el paso 1."""
+        m = self.modo_var.get()
+        if m != "avanzado" and m != modo:
+            nombre = ("dimensionamiento" if m == "sizing"
+                      else "evaluación")
+            self.estado.set(
+                f"Está en modo {nombre.upper()}: solo puede calcular "
+                f"{nombre}. Use el paso 1 para cambiar de modo "
+                f"(u OTRAS para el formulario completo).")
+            return
+        self._calcular_async(modo)
 
     # ------------------------------------------------------------- analysis
     def _tab_analysis(self) -> None:
@@ -430,12 +679,12 @@ class Aplicacion(tk.Tk):
         marco.columnconfigure(1, weight=2, minsize=540)
         marco.rowconfigure(1, weight=1)
 
-        self.lbl_modo = ttk.Label(marco, text="Sin resultados todavía",
+        self.lbl_modo = rotulo(marco, text="Sin resultados todavía",
                                   style="Titulo.TLabel")
         self.lbl_modo.grid(row=0, column=0, columnspan=2, sticky="w",
                            pady=(0, 6))
 
-        izq = ttk.LabelFrame(marco, text="Thermal Design", padding=(6, 4))
+        izq = bloque(marco, text="Thermal Design", padding=(6, 4))
         izq.grid(row=1, column=0, sticky="nsew", padx=(0, 6))
         izq.rowconfigure(0, weight=1)
         izq.columnconfigure(0, weight=1)
@@ -444,29 +693,40 @@ class Aplicacion(tk.Tk):
 
         der = ttk.Frame(marco)
         der.grid(row=1, column=1, sticky="nsew")
-        der.rowconfigure(0, weight=3)
+        der.rowconfigure(0, weight=2)
         der.rowconfigure(1, weight=2)
+        der.rowconfigure(2, weight=1)
         der.columnconfigure(0, weight=1)
 
-        hid = ttk.LabelFrame(der, text="Hydraulic Design", padding=(6, 4))
+        hid = bloque(der, text="Hydraulic Design", padding=(6, 4))
         hid.grid(row=0, column=0, sticky="nsew")
         hid.rowconfigure(0, weight=1)
         hid.columnconfigure(0, weight=1)
-        self.tbl_hidraulico = tabla_resultados(hid, altura=9)
+        self.tbl_hidraulico = tabla_resultados(hid, altura=8)
         self.tbl_hidraulico.grid(row=0, column=0, sticky="nsew")
-        ttk.Label(hid, style="Nota.TLabel", wraplength=330, text=(
+        rotulo(hid, style="Nota.TLabel", wraplength=330, text=(
             "Caídas de presión Δp por el método de Kern (tubos: fricción + "
             "retorno, Eq. 7.43/7.45; coraza: Eq. 7.44). Son indicativas: antes "
             "de fabricar contrástelas con un cálculo detallado.")
         ).grid(row=1, column=0, sticky="w", pady=(4, 0))
 
-        adv = ttk.LabelFrame(der, text="Advertencias y notas educativas",
+        ver = bloque(der, text="Verificación del diseño", padding=(6, 4))
+        ver.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
+        ver.rowconfigure(0, weight=1)
+        ver.columnconfigure(0, weight=1)
+        self.tbl_verif = tabla_resultados(ver, altura=8)
+        self.tbl_verif.grid(row=0, column=0, sticky="nsew")
+        self.lbl_verif_titulo = rotulo(ver, style="Nota.TLabel", text=(
+            "Checklist de verificación según el modo de trabajo."))
+        self.lbl_verif_titulo.grid(row=1, column=0, sticky="w", pady=(2, 0))
+
+        adv = bloque(der, text="Advertencias y notas educativas",
                              padding=(6, 4))
-        adv.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
+        adv.grid(row=2, column=0, sticky="nsew", pady=(6, 0))
         adv.rowconfigure(0, weight=1)
         adv.columnconfigure(0, weight=1)
         self.txt_adv = tk.Text(adv, height=7, wrap="word", relief="solid",
-                               bd=1, font=("Segoe UI", 9), bg="white")
+                               bd=1, font=("Segoe UI", 12), bg="white")
         self.txt_adv.grid(row=0, column=0, sticky="nsew")
         self.txt_adv.configure(state="disabled")
 
@@ -483,15 +743,21 @@ class Aplicacion(tk.Tk):
 
         cab = ttk.Frame(marco)
         cab.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6))
-        ttk.Label(cab, text="Vista:").pack(side="left", padx=(2, 6))
+        rotulo(cab, text="Vista:").pack(side="left", padx=(2, 6))
         self.var_vista = tk.StringVar(value=list(drawings.VISTAS)[0])
         combo = ttk.Combobox(cab, textvariable=self.var_vista, width=32,
                              state="readonly", values=list(drawings.VISTAS))
         combo.pack(side="left")
         combo.bind("<<ComboboxSelected>>", lambda e: self._redibujar())
-        ttk.Button(cab, text="Redibujar", command=self._redibujar).pack(
+
+        # Un clic en el campo abre la lista (no solo la flecha lateral).
+        def _abrir_lista(evt, _c=combo):
+            if evt.x < _c.winfo_width() - 24:
+                _c.tk.call("ttk::combobox::Post", _c)
+        combo.bind("<Button-1>", _abrir_lista, add="+")
+        boton(cab, text="Redibujar", command=self._redibujar).pack(
             side="left", padx=8)
-        ttk.Label(cab, style="Nota.TLabel",
+        rotulo(cab, style="Nota.TLabel",
                   text="Dibujos paramétricos: se generan desde las cotas "
                        "calculadas en src/mechanical.").pack(side="left",
                                                              padx=10)
@@ -505,14 +771,14 @@ class Aplicacion(tk.Tk):
         self.canvas.bind("<Configure>", self._al_redimensionar_canvas)
         self.canvas.bind("<Motion>", self._al_mover_sobre_canvas)
 
-        lado = ttk.LabelFrame(marco, text="Dimensiones de fabricación",
+        lado = bloque(marco, text="Dimensiones de fabricación",
                               padding=(6, 4))
         lado.grid(row=1, column=1, sticky="nsew")
         lado.rowconfigure(0, weight=1)
         lado.columnconfigure(0, weight=1)
         self.tbl_mecanico = tabla_resultados(lado, altura=22)
         self.tbl_mecanico.grid(row=0, column=0, sticky="nsew")
-        ttk.Label(lado, style="Nota.TLabel", wraplength=300,
+        rotulo(lado, style="Nota.TLabel", wraplength=300,
                   text="Clic sobre una pieza del dibujo para ver sus cotas "
                        "en una ventana emergente.").grid(row=1, column=0,
                                                          sticky="w",
@@ -525,7 +791,7 @@ class Aplicacion(tk.Tk):
         marco.rowconfigure(0, weight=1)
         marco.columnconfigure(0, weight=1)
         txt = tk.Text(marco, wrap="word", relief="solid", bd=1,
-                      font=("Segoe UI", 10), bg="white", padx=14, pady=12)
+                      font=("Segoe UI", 12), bg="white", padx=14, pady=12)
         barra = ttk.Scrollbar(marco, orient="vertical", command=txt.yview)
         txt.configure(yscrollcommand=barra.set)
         txt.grid(row=0, column=0, sticky="nsew")
@@ -533,7 +799,7 @@ class Aplicacion(tk.Tk):
 
         txt.tag_configure("h1", font=("Segoe UI", 13, "bold"),
                           foreground=COLOR_TITULO, spacing3=8)
-        txt.tag_configure("h2", font=("Segoe UI", 10, "bold"),
+        txt.tag_configure("h2", font=("Segoe UI", 12, "bold"),
                           foreground=COLOR_TITULO, spacing1=10, spacing3=4)
         txt.insert("end", "Guía rápida de uso\n", "h1")
         for titulo, cuerpo in AYUDA:
@@ -679,6 +945,16 @@ class Aplicacion(tk.Tk):
         except CampoInvalido as exc:
             self._mostrar_error(exc, "Formulario")
             return
+        # Un proyecto SIN temperatura de salida es un caso de evaluación
+        # (rating): la geometría ya está definida y la incógnita es el
+        # comportamiento del equipo. En ese caso F5 se redirige a F6 para que
+        # el usuario vea el resultado en vez de un error de balance.
+        if modo == "sizing" and ctrl.modo_calculo(datos) == "rating":
+            modo = "rating"
+            self.estado.set(
+                "Proyecto de evaluación (rating): ninguna «T salida» está "
+                "definida porque la incógnita es el comportamiento del equipo "
+                "existente. Se ejecutó «Evaluar equipo» (F6).")
 
         etiqueta = ("Calculando dimensionamiento (Método de Kern)… la ventana "
                     "sigue activa" if modo == "sizing"
@@ -740,6 +1016,7 @@ class Aplicacion(tk.Tk):
         self.form.campos["n_tt"].set(res.N_tt)
         self.form.campos["d_s_mm"].set(round(res.D_s * 1000.0, 1))
         self._render_sizing(res)
+        self._render_verificaciones("sizing", datos, res, res_mec)
         self._aplicar_mecanico(res_mec, aviso_mec)
         self.nb.select(1)
         self.estado.set(
@@ -753,6 +1030,7 @@ class Aplicacion(tk.Tk):
         self.res_termico, self.modo = res, "rating"
         self.ultimo_D_s = datos["d_s_mm"] / 1000.0
         self._render_rating(res)
+        self._render_verificaciones("rating", datos, res, res_mec)
         self._aplicar_mecanico(res_mec, aviso_mec)
         self.nb.select(1)
         self.estado.set(
@@ -869,6 +1147,22 @@ class Aplicacion(tk.Tk):
             ("Fricción coraza (Kern)", "f_s", f"{r.f_s:.4f}", "–"),
         ])
 
+    def _render_verificaciones(self, modo: str, datos, res, res_mec) -> None:
+        """Checklist de verificación del diseño, distinto para sizing y rating."""
+        filas = [("VERIFICACIÓN DEL DISEÑO", "ESTADO", "DETALLE", "", "titulo")]
+        for nombre, estado, detalle in ctrl.verificaciones_diseno(
+                modo, datos, res, res_mec):
+            filas.append((nombre, estado, detalle, "",
+                          "ok" if estado == "OK" else "alerta"))
+        llenar_tabla(self.tbl_verif, filas)
+        self.lbl_verif_titulo.configure(text=(
+            f"Modo {modo.upper()}: "
+            + ("propuesta de equipo NUEVO — se verifican la sobre-área, la "
+               "geometría TEMA y las ventanas de velocidad."
+               if modo == "sizing" else
+               "evaluación de un equipo EXISTENTE — se verifican el cierre "
+               "del balance, la efectividad y la cercanía al pinch.")))
+
     def _render_advertencias(self, advertencias) -> None:
         self.txt_adv.configure(state="normal")
         self.txt_adv.delete("1.0", "end")
@@ -877,7 +1171,7 @@ class Aplicacion(tk.Tk):
                 self.txt_adv.insert("end", f"⚠  {i}. {texto}\n\n")
         else:
             self.txt_adv.insert(
-                "end", "✓ Sin advertencias: el diseño respeta las ventanas "
+                "end", "Sin advertencias: el diseño respeta las ventanas "
                        "de velocidad, el pitch mínimo y el factor F "
                        "recomendados por TEMA / Kern.")
         self.txt_adv.configure(state="disabled")
@@ -1109,12 +1403,18 @@ class Aplicacion(tk.Tk):
     def _acerca_de(self) -> None:
         messagebox.showinfo(
             "Acerca de",
+            "Intercambiador de Tubos y Coraza\n"
             "Software educativo de diseño de intercambiadores de calor\n"
             "de tubos y coraza.\n\n"
             "• Térmico: Método de Kern (LMTD + factor F).\n"
             "• Mecánico: estándar TEMA Clase C.\n"
             "• Base termofísica propia (10 fluidos, 5 materiales).\n\n"
-            "Interfaz inspirada en Tan & Fok (2006).")
+            "© 2026 Diego Nicolás Bohórquez Barón\n"
+            "Todos los derechos reservados.\n"
+            "Prohibida la copia o presentación de este trabajo, total o\n"
+            "parcialmente, sin atribución expresa a su autor.\n\n"
+            "Interfaz inspirada en Tan & Fok (2006). Condiciones de uso\n"
+            "completas en el archivo LICENSE.txt.")
 
 
 AYUDA = [
@@ -1155,7 +1455,7 @@ AYUDA = [
      "muestra el catálogo completo de la Fig. N-1.2 del estándar TEMA con su "
      "selección resaltada. Haga clic sobre cualquier pieza para abrir una "
      "ventana con sus cotas exactas en milímetros."),
-    ("8. Archivos .he",
+    ("8. Archivos .bb",
      "File → Guardar almacena únicamente los datos de entrada en formato "
      "JSON. Al abrir un proyecto debe recalcular con F5: así los resultados "
      "nunca quedan desactualizados respecto del motor de cálculo."),
@@ -1172,12 +1472,18 @@ AYUDA = [
      "(entradas y salidas), no solo la media: por ejemplo, etanol a 95 °C se "
      "rechaza aunque su media quede dentro del rango. El agua líquida está "
      "limitada a 100 °C (su ebullición a 1 atm): el modelo es monofásico y no "
-     "cubre servicios presurizados ni vaporización."),
+     "cubre servicios presurizados ni vaporización. Excepción: metanol, "
+     "aceptado hasta 100 °C como líquido presurizado, tal como trabajan los "
+     "ejercicios de referencia de la literatura."),
     ("11. Régimen de flujo e incertidumbre",
-     "Las correlaciones de Kern están calibradas para flujo TURBULENTO. Si el "
-     "cálculo cae en régimen laminar o de transición, el programa lo señala y "
-     "reporta una banda de incertidumbre estimada (±25 % en transición, "
-     "±40 % en laminar) sobre U. En esos casos contraste el resultado con "
+     "Las correlaciones cubren los tres regímenes: Hausen (1959) para "
+     "laminar en tubos, Gnielinski (1976) para transición y turbulento "
+     "(con respaldo de Dittus-Boelter), y en coraza el método de Kern con "
+     "corrección de Graetz en laminar. En los intervalos de empalme "
+     "(2100-2400 en tubos, 100-2000 en coraza) se mezclan ambas "
+     "correlaciones de forma continua. La banda de incertidumbre estimada "
+     "sobre U es ±15 % en turbulento, ±20 % en transición y ±25 % en "
+     "laminar. En los regímenes no turbulentos contraste el resultado con "
      "Bell-Delaware, ε-NTU o datos de servicio antes de fabricar."),
 ]
 

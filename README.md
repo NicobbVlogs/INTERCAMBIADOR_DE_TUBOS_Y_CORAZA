@@ -24,7 +24,7 @@ Para comprobar que todo funciona correctamente:
 py verificar.py
 ```
 
-Ese comando ejecuta 117 pruebas sobre las cuatro fases y termina diciendo
+Ese comando ejecuta 138 pruebas sobre todas las fases y termina diciendo
 `TODO CORRECTO` o enumerando las fallas.
 
 ---
@@ -51,7 +51,7 @@ src/
     rating.py               evaluar()      — itera sobre T_out
   mechanical/  Diseño mecánico (TEMA Clase C)
     design.py               disenar_mecanico() — dimensiones de fabricación
-  gui/         Interfaz gráfica (tkinter/ttk)
+  gui/         Interfaz gráfica (CustomTkinter, paleta morado/carmesí/naranja)
     app.py                  Ventana, menú y pestañas
     controller.py           Único puente entre la vista y los módulos de cálculo
     widgets.py              Campos validados, tooltips, tablas
@@ -72,18 +72,23 @@ resaltado nunca pueda contradecir al motor de cálculo.
 
 ## Ejemplos incluidos
 
-Se abren desde **File → Abrir ejemplo validado** y se calculan solos. Los cinco
-convergen sin una sola advertencia:
+Se abren desde **File → Ejemplos** y se calculan solos. Once proyectos,
+divididos por modo — ocho ejercicios resueltos de la literatura (los mismos
+que se comparan en el documento final) y los tres de Tan y Fok:
 
-| Proyecto | Carga | Tubos | D_s |
-|---|---|---|---|
-| Agua–agua (caso base) | 5020 kW | 502 | 642 mm |
-| Enfriador de etanol | 660 kW | 304 | 551 mm |
-| Enfriador de etilenglicol | 1375 kW | 246 | 485 mm |
-| Enfriador de benceno | 568 kW | 130 | 354 mm |
-| Enfriador de amoniaco líquido | 1931 kW | 648 | 748 mm |
-
----
+| Proyecto | Modo | Fuente |
+|---|---|---|
+| `09_sinnott_metanol_agua_sizing.bb` | Sizing | Sinnott & Towler, Ej. 12.1 (metanol–agua salobre) |
+| `10_karimi_metanol_agua_mar_sizing.bb` | Sizing | Kharaji/Karimi et al. (metanol–agua de mar, óptimo PSO) |
+| `11_janna_agua_agua_sizing.bb` | Sizing | Servicio de Janna redimensionado (agua–agua) |
+| `12_kern_ej74_agua_agua_sizing.bb` | Sizing | Servicio del Ejemplo 7.4 de Kern (agua–agua) |
+| `13_janna_agua_agua_rating.bb` | Rating | Janna, p. 251 (196 tubos) |
+| `14_kern_ej74_agua_agua_rating.bb` | Rating | Kern (1950), Ejemplo 7.4 (160 tubos) |
+| `15_msubbu_metanol_agua_rating.bb` | Rating | msubbu/Sinnott (918 tubos) |
+| `16_karimi_metanol_agua_mar_rating.bb` | Rating | Kharaji, geometría PSO (1238 tubos) |
+| `06_tan_fok_sizing.bb` | Sizing | Tan y Fok (2006): especificación del artículo |
+| `07_tan_fok_rating.bb` | Rating | Equipo del artículo (257 tubos) |
+| `08_tan_fok_rating_parcial.bb` | Rating | El mismo equipo fuera de diseño |
 
 ## Sobre los mensajes de error
 
@@ -132,18 +137,34 @@ y 4 dibujan el equipo con el símbolo correspondiente al tipo elegido.
 
 ## Régimen de flujo e incertidumbre de los coeficientes
 
-Las correlaciones de Kern están calibradas para flujo **turbulento**. Cuando el
-cálculo cae en régimen laminar (Re < 2100) o de transición, el programa:
+El programa cubre los **tres regímenes** con correlaciones específicas en cada
+lado:
 
-1. usa las ramas adecuadas de cada correlación (laminar de Kern con
-   `Nu = 1.72·(Re·Pr·D_e/L_b)^1/3` en coraza, Sieder-Tate en tubos);
-2. resuelve el lazo de *U* por **bisección con bracket fijo**, de modo que el
-   resultado **no depende de la semilla U inicial** ni oscila entre corridas;
-3. señala el régimen en la tabla hidráulica y reporta una **banda de
-   incertidumbre estimada** sobre *U* (±25 % en transición, ±40 % en laminar).
+1. **Lado tubos** — laminar (Re < 2100): **Hausen (1959)**, solución de Graetz
+   con entrada térmica (`Nu = 3,66 + 0,0668·Gz/(1 + 0,04·Gz^2/3)`, con
+   `Gz = (d_i/L)·Re·Pr`); transición y turbulento (2400 ≤ Re < 5·10⁶):
+   **Gnielinski (1976)**, con factor de fricción de Petukhov
+   (`f = (0,790·ln Re − 1,64)^−2`); respaldo Dittus–Boelter por encima de
+   5·10⁶. Corrección por viscosidad de pared de Sieder–Tate (1936),
+   `φ = (μ/μ_w)^0,14`. Entre 2100 y 2400 las ramas de Hausen y Gnielinski se
+   mezclan en escala logarítmica para que `Nu(Re)` sea continua;
+2. **Lado coraza** — Kern turbulento (`Nu = 0,36·Re^0,55·Pr^1/3`) y su rama
+   laminar con dependencia de Graetz (`Nu = 1,72·(Re·Pr·D_e/B)^1/3`); entre
+   100 y 2000 la mezcla log–log es continua en ambos extremos y conserva la
+   dependencia `D_e/B`;
+3. el lazo de *U* se resuelve por **bisección con bracket fijo**, de modo que
+   el resultado **no depende de la semilla U inicial** ni oscila entre
+   corridas;
+4. se señala el régimen en la tabla hidráulica y se reporta una **banda de
+   incertidumbre estimada** sobre *U* (±15 % turbulento, ±20 % transición,
+   ±25 % laminar).
 
-En esos casos el resultado es indicativo: contrástelo con Bell–Delaware,
-ε-NTU o datos de servicio antes de fabricar.
+Las correlaciones que resolvieron los regímenes laminar y de transición —las
+de **Hausen** y **Gnielinski**— se verificaron contra la documentación técnica
+consultada en línea (guía de transferencia de calor de neqsim/equinor,
+secciones de flujo laminar, transición y turbulento). Aun así, en
+laminar/transición la dispersión es mayor que en turbulento: contrástelo con
+Bell–Delaware, ε-NTU o datos de servicio antes de fabricar.
 
 ---
 
@@ -161,8 +182,10 @@ cierra a mano en dos pasadas: calcule con un *B* tentativo, pulse el botón
 - **Sin cambio de fase.** Todas las correlaciones son para líquidos y gases
   monofásicos. No modela condensadores ni evaporadores (la coraza K se calcula
   solo en su parte sensible).
-- **Caída de presión (Δp): no implementada.** El panel *Hydraulic Design* la
-  muestra como «reservado», según el alcance definido para esta versión. Sí
+- **Caída de presión (Δp): implementada por el método de Kern** (tubos:
+  fricción + retorno, Eq. 7.43/7.45; coraza: Eq. 7.44). El panel *Hydraulic
+  Design* muestra las Δp y los factores de fricción, y el programa advierte
+  si alguna supera el límite permisible que fije el usuario. Sí
   reporta velocidades, Reynolds, régimen y diámetro equivalente, que permiten
   verificar las ventanas recomendadas por TEMA/Kern.
 - **Conteo de tubos.** El sizing usa la correlación de Serth (con C_L y C_TP),

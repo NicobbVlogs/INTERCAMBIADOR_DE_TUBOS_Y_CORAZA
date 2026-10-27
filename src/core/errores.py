@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# © 2026 Diego Nicolás Bohórquez Barón · propiedad intelectual del autor.
 """
 errores.py - Rechazos de diseno con mensaje educativo estructurado (transversal)
 ================================================================================

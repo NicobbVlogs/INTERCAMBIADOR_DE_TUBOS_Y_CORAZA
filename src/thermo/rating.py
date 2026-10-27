@@ -1,3 +1,4 @@
+# © 2026 Diego Nicolás Bohórquez Barón · propiedad intelectual del autor.
 """
 RATING TERMICO - Metodo de Kern (busqueda de raices sobre las temperaturas)
 =============================================================================
@@ -512,18 +513,21 @@ def evaluar(caliente: Stream, fria: Stream, geom: ExchangerGeometry,
             continue
         adv.append(
             f"Flujo en {lado} en régimen {regimen_x} "
-            f"(Re = {Re_x:,.0f}): las correlaciones de Kern están calibradas "
-            f"para flujo turbulento; la incertidumbre de U puede llegar a "
-            f"±{INCERTIDUMBRE_U[regimen_x]:.0f} %."
+            f"(Re = {Re_x:,.0f}): el programa lo cubre con las correlaciones "
+            "específicas para este régimen (Hausen y Gnielinski en tubos, "
+            "Kern laminar con dependencia de Graetz en coraza); la dispersión "
+            f"de U llega a ±{INCERTIDUMBRE_U[regimen_x]:.0f} %."
         )
     banda = max(INCERTIDUMBRE_U[punto.regimen], INCERTIDUMBRE_U[punto.regimen_s])
     if banda > 15.0:
         adv.append(
             f"Resultado U = {punto.U:,.1f} W/m²·K con banda de incertidumbre "
             f"estimada de ±{banda:.0f} % (régimen tubos: {punto.regimen}, "
-            f"coraza: {punto.regimen_s}). En laminar/transición el método de "
-            "Kern es indicativo: contraste con Bell-Delaware o datos de "
-            "servicio antes de tomar decisiones de diseño."
+            f"coraza: {punto.regimen_s}). En laminar/transición las "
+            "correlaciones de Hausen y Gnielinski ya son las adecuadas, pero "
+            "la dispersión sigue siendo mayor que en turbulento: contraste "
+            "con Bell-Delaware o datos de servicio antes de tomar decisiones "
+            "de diseño."
         )
     if punto.regimen_s == "turbulento" and not RE_KERN_MIN <= punto.Re_s <= RE_KERN_MAX:
         adv.append(

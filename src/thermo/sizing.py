@@ -1,3 +1,4 @@
+# © 2026 Diego Nicolás Bohórquez Barón · propiedad intelectual del autor.
 """
 SIZING TERMICO - Metodo de Kern (iteracion sobre el coeficiente global U)
 =============================================================================
@@ -59,10 +60,11 @@ RE_KERN_MAX = 1.0e6
 # y se marcan con advertencia explicita (ver `aviso_tipo_carcasa`).
 TEMA_CARCASAS = ("E", "F", "G", "H", "J", "K", "X")
 
-# Incertidumbre tipica de U cuando el flujo NO es turbulento: Kern calibro sus
-# correlaciones en regimen turbulento; fuera de el, la dispersion de las
-# correlaciones laminar/transicion se traslada al coeficiente global.
-INCERTIDUMBRE_U = {"turbulento": 15.0, "transicion": 25.0, "laminar": 40.0}
+# Incertidumbre tipica de U por regimen. Con Hausen (laminar) y Gnielinski
+# (transicion/turbulento) en tubos y Kern en coraza todo el espectro esta
+# cubierto; la dispersion sigue creciendo al bajar de Re ~ 1e4 porque la
+# correccion de coraza (Kern) es la que mas pesa en U.
+INCERTIDUMBRE_U = {"turbulento": 15.0, "transicion": 20.0, "laminar": 25.0}
 
 
 # =============================================================================
@@ -421,43 +423,54 @@ def diametro_equivalente(P_T: float, D_o: float, layout: int) -> float:
 def nusselt_tubos(Re: float, Pr: float, D_i: float, L: float,
                   phi: float) -> Tuple[float, str]:
     """
-    Nusselt interno de tubos. Devuelve (Nu, regimen).
+    Nusselt interno de tubos. Devuelve (Nu, regimen). Cubre TODO el espectro:
 
-    Re >= 1e4        : Sieder-Tate turbulento.
-    2100 <= Re < 1e4 : Hausen (transicion).
-    Re < 2100        : Sieder-Tate laminar, con piso Nu = 3.66 (T_w constante).
+    Re < 2100        : laminar -> Hausen (1959), solucion de Graetz con
+                       entrada termica:  Nu = 3.66 + 0.0668 Gz / (1 + 0.04 Gz^(2/3)),
+                       con Gz = (D_i / L) Re Pr. Recupera el asintoto de
+                       entrada de Sieder-Tate (Nu ~ 1.67 Gz^(1/3)) para Gz
+                       grande y Nu = 3.66 (pared isotermica) para Gz -> 0,
+                       SIN el piso duro que tenia la forma 1.86 Gz^(1/3).
+    2400 <= Re < 5e6 : Gnielinski (1976), valida 2300 - 5e6 y 0.5 < Pr < 2000:
+                       Nu = ((f/8)(Re - 1000) Pr) / (1 + 12.7 sqrt(f/8) (Pr^(2/3) - 1))
+                       con f de Petukhov, factor de entrada (1 + (D_i/L)^(2/3))
+                       y correccion de pared. Es LA correlacion que resuelve
+                       la transicion (2300 - 1e4), donde Dittus-Boelter y
+                       Hausen sobreestiman/infraestiman el 20-45 %.
+    Re >= 5e6        : Dittus-Boelter (respaldo fuera del rango de Gnielinski).
 
-    BANDAS DE MEZCLA: al cruzar Re = 2100 o Re = 1e4 las correlaciones se
-    diferencian ~10-14 %, y ese salto se traslada a U y lo hace oscilar en la
-    iteracion. En dos franjas estrechas se mezclan las ramas adyacentes en
-    escala logaritmica, de modo que Nu(Re) queda CONTINUA sin alterar las
-    formulas clasicas fuera de las franjas.
+    2100 - 2400      : mezcla logaritmica local entre Hausen y Gnielinski
+                       para que Nu(Re) quede CONTINUA en el solver.
+    phi              : correccion por viscosidad de pared (mu/muw)^0.14
+                       (Sieder-Tate 1936).
     """
-    def _laminar() -> float:
-        return max(1.86 * (Re * Pr * D_i / L) ** (1.0 / 3.0) * phi, 3.66)
-
     def _hausen() -> float:
-        return max(0.116 * (Re ** (2.0 / 3.0) - 125.0) * Pr ** (1.0 / 3.0)
-                   * (1.0 + (D_i / L) ** (2.0 / 3.0)) * phi, 3.66)
+        Gz = (D_i / L) * Re * Pr
+        return 3.66 + 0.0668 * Gz / (1.0 + 0.04 * Gz ** (2.0 / 3.0))
 
-    def _turbulento() -> float:
-        return 0.023 * Re ** 0.8 * Pr ** (1.0 / 3.0) * phi
+    def _gnielinski() -> float:
+        f = (0.790 * math.log(Re) - 1.64) ** (-2.0)          # Petukhov
+        raiz = math.sqrt(f / 8.0)
+        nu = ((f / 8.0) * (Re - 1000.0) * Pr
+              / (1.0 + 12.7 * raiz * (Pr ** (2.0 / 3.0) - 1.0)))
+        return nu * (1.0 + (D_i / L) ** (2.0 / 3.0))
+
+    def _dittus() -> float:
+        return 0.023 * Re ** 0.8 * Pr ** (1.0 / 3.0)
 
     def _mezcla(nu_a: float, nu_b: float, w: float) -> float:
         return math.exp((1.0 - w) * math.log(max(nu_a, 1e-12))
                         + w * math.log(max(nu_b, 1e-12)))
 
-    if Re < 1900.0:
-        return _laminar(), "laminar"
-    if Re < 2300.0:                       # banda laminar -> Hausen
-        w = (Re - 1900.0) / 400.0
-        return _mezcla(_laminar(), _hausen(), w), "laminar"
-    if Re < 8000.0:
-        return _hausen(), "transicion"
-    if Re < 1.2e4:                        # banda Hausen -> turbulento
-        w = (Re - 8000.0) / 4000.0
-        return _mezcla(_hausen(), _turbulento(), w), "transicion"
-    return _turbulento(), "turbulento"
+    if Re < 2100.0:
+        return _hausen() * phi, "laminar"
+    if Re < 2400.0:                       # banda Hausen -> Gnielinski
+        w = (Re - 2100.0) / 300.0
+        return _mezcla(_hausen(), _gnielinski(), w) * phi, "laminar"
+    if Re < 5.0e6:
+        regimen = "transicion" if Re < 1.0e4 else "turbulento"
+        return _gnielinski() * phi, regimen
+    return _dittus() * phi, "turbulento"
 
 
 def nusselt_coraza(Re: float, Pr: float, phi: float,
@@ -465,34 +478,40 @@ def nusselt_coraza(Re: float, Pr: float, phi: float,
                    L_b: Optional[float] = None) -> Tuple[float, str]:
     """
     Correlacion de Kern para el lado coraza con baffles segmentados al 25 %.
-    Devuelve (Nu, regimen).
+    Devuelve (Nu, regimen). Cubre TODO el espectro:
 
     Re >= 2e3      : Kern turbulento, Nu = 0.36 Re^0.55 Pr^(1/3) phi.
-    Re < 100       : Kern laminar,  Nu = 1.72 (Re Pr D_e/L_b)^(1/3) phi,
+    Re < 100       : Kern laminar,  Nu = 1.72 (Re Pr D_e/L_b)^(1/3) phi
+                     (solucion tipo Graetz para el canal entre baffles),
                      con piso Nu = 3.66 (pared isotermica).
-    100 <= Re < 2e3: transicion - interpolacion log-log entre ambas ramas
-                     (ninguna de las dos correlaciones es valida ahi).
+    100 <= Re < 2e3: transicion - mezcla log-log CONTINUA entre la rama
+                     laminar evaluada en el propio Re (conserva la
+                     dependencia D_e/L_b) y la rama turbulenta evaluada en
+                     el mismo Re. Asi Nu(Re) es continua en 100 y en 2000,
+                     sin saltos que desestabilicen el solver.
 
     La rama laminar SIEMPRE requiere D_e y L_b (espaciado de baffles): en
     laminar el desarrollo termico depende de la longitud del canal de flujo
     cruzado, no solo del Reynolds. Sin esos datos se degrada al piso Nu = 3.66.
     """
-    if Re >= 2.0e3:
-        return 0.36 * Re ** 0.55 * Pr ** (1.0 / 3.0) * phi, "turbulento"
-
     def _laminar(Re_x: float) -> float:
         if D_e is None or L_b is None or L_b <= 0.0:
             return 3.66
         return max(1.72 * (Re_x * Pr * D_e / L_b) ** (1.0 / 3.0) * phi, 3.66)
 
+    def _turbulento(Re_x: float) -> float:
+        return 0.36 * Re_x ** 0.55 * Pr ** (1.0 / 3.0) * phi
+
+    if Re >= 2.0e3:
+        return _turbulento(Re), "turbulento"
     if Re < 100.0:
         return _laminar(Re), "laminar"
 
-    # Transicion 100 - 2000: interpolacion log-log entre ramas extremas.
-    lam_100 = max(_laminar(100.0), 1e-12)
-    turb_2000 = max(0.36 * (2.0e3) ** 0.55 * Pr ** (1.0 / 3.0) * phi, 1e-12)
+    # Transicion 100 - 2000: mezcla log-log continua extremo a extremo.
+    nu_a = max(_laminar(Re), 1e-12)
+    nu_b = max(_turbulento(Re), 1e-12)
     w = math.log(Re / 100.0) / math.log(2000.0 / 100.0)
-    Nu = math.exp((1.0 - w) * math.log(lam_100) + w * math.log(turb_2000))
+    Nu = math.exp((1.0 - w) * math.log(nu_a) + w * math.log(nu_b))
     return Nu, "transicion"
 
 
@@ -1004,17 +1023,20 @@ def dimensionar(caliente: Stream, fria: Stream,
             continue
         adv.append(
             f"Flujo en {lado} en régimen {regimen_x} (Re = {Re_x:,.0f}). "
-            "Las correlaciones de Kern están calibradas para flujo turbulento: "
-            f"en {regimen_x} la incertidumbre de los coeficientes puede llegar a "
-            f"±{INCERTIDUMBRE_U[regimen_x]:.0f} % sobre U."
+            "El programa lo cubre con correlaciones específicas para este "
+            "régimen (Hausen y Gnielinski en tubos, Kern laminar con "
+            "dependencia de Graetz en coraza), pero la dispersión es mayor "
+            f"que en turbulento: ±{INCERTIDUMBRE_U[regimen_x]:.0f} % sobre U."
         )
     banda = max(INCERTIDUMBRE_U[regimen], INCERTIDUMBRE_U[regimen_s])
     if banda > 15.0:
         adv.append(
             f"Resultado U = {U:,.1f} W/m²·K con banda de incertidumbre estimada "
             f"de ±{banda:.0f} % (régimen tubos: {regimen}, coraza: {regimen_s}). "
-            "En laminar/transición el método de Kern es indicativo: contraste "
-            "con Bell-Delaware, ε-NTU o datos de servicio antes de fabricar."
+            "En laminar/transición las correlaciones de Hausen y Gnielinski ya "
+            "son las adecuadas, pero la dispersión sigue siendo mayor que en "
+            "turbulento: contraste con Bell-Delaware, ε-NTU o datos de servicio "
+            "antes de fabricar."
         )
 
     if not RE_KERN_MIN <= Re_s <= RE_KERN_MAX and regimen_s == "turbulento":

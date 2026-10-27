@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# © 2026 Diego Nicolás Bohórquez Barón · propiedad intelectual del autor.
 """
 verificar.py - Suite de verificacion del programa completo.
 
@@ -15,8 +16,8 @@ Que cubre:
   2. Thermo    - el caso base converge y el rating reproduce el sizing.
   3. Mechanical- el dimensionamiento TEMA se completa y es coherente.
   4. Errores   - las condiciones fisicas invalidas lanzan ValueError educativo.
-  5. GUI       - la ventana se construye, calcula, dibuja y guarda/abre .he.
-  6. Ejemplos  - los proyectos .he distribuidos siguen siendo validos.
+  5. GUI       - la ventana se construye, calcula, dibuja y guarda/abre .bb.
+  6. Ejemplos  - los proyectos .bb distribuidos siguen siendo validos.
   7. Robustez  - barrido amplio: ninguna entrada debe producir un crash real.
 """
 from __future__ import annotations
@@ -197,6 +198,40 @@ def probar_calculo() -> dict:
           "TEMA F cuenta 2 pasadas de coraza; E cuenta 1")
     check(abs(2.0 * geom_F.a_flujo_coraza - geom_E.a_flujo_coraza) < 1e-12,
           "en F el area de flujo cruzado se divide entre las 2 pasadas")
+
+    # Verificacion hidraulica: limites permisibles de Δp cargados por el usuario.
+    r_lim = ctrl.correr_sizing(dict(d, dp_t_max=1.0, dp_s_max=1.0))
+    check(any("permisible" in a for a in r_lim.advertencias),
+          "una Δp por encima del limite permisible genera advertencia")
+    check(not any("permisible" in a for a in r.advertencias),
+          "sin limite cargado no se emite esa advertencia")
+    rt_lim = ctrl.correr_rating(dict(d2, dp_s_max=1.0))
+    check(any("permisible" in a for a in rt_lim.advertencias),
+          "el rating tambien advierte cuando se supera el limite")
+
+    # Proyectos de rating (sin T de salida): F5 debe redirigir al rating.
+    check(ctrl.modo_calculo(dict(d, tout_cal=None, tout_fri=None)) == "rating",
+          "sin ninguna T de salida el proyecto se detecta como rating (F6)")
+    check(ctrl.modo_calculo(d) == "sizing",
+          "con una T de salida el proyecto sigue siendo sizing (F5)")
+
+    # Checklist de verificacion adaptado al modo (sizing vs rating).
+    ver_s = ctrl.verificaciones_diseno("sizing", d, r)
+    ver_r = ctrl.verificaciones_diseno("rating", d2, rt)
+    nombres_s = {n for n, _, _ in ver_s}
+    nombres_r = {n for n, _, _ in ver_r}
+    check(any("obre-área" in n for n in nombres_s)
+          and not any("fectividad" in n for n in nombres_s),
+          "el checklist de sizing valida la propuesta (sobre-área, sin efectividad)")
+    check(any("fectividad" in n for n in nombres_r)
+          and not any("obre-área" in n for n in nombres_r),
+          "el checklist de rating valida la evaluacion (efectividad, sin sobre-área)")
+    check(all(e in ("OK", "AVISO") for _, e, _ in ver_s + ver_r),
+          "todas las verificaciones devuelven OK o AVISO")
+    ver_dp = ctrl.verificaciones_diseno("sizing", dict(d, dp_t_max=1.0),
+                                        ctrl.correr_sizing(dict(d, dp_t_max=1.0)))
+    check(any("Δp en tubos" in n and e == "AVISO" for n, e, _ in ver_dp),
+          "superar el limite de Δp marca AVISO en el checklist del modo")
 
     bloque("4. Diseno mecanico (src/mechanical)")
     m = ctrl.correr_mecanico(d, r.D_s, r.N_tt, r.T_h_out, r.T_c_out)
@@ -390,6 +425,21 @@ def probar_gui() -> None:
     check(len(win.tbl_mecanico.get_children()) > 20, "tabla mecanica poblada")
     check(not avisos, "el caso base no genera ninguna alerta", str(avisos))
 
+    # Boton «1/2·D_s»: cierra a mano el lazo B <-> D_s (B es entrada, D_s es
+    # resultado y la ventana TEMA de B depende de el).
+    win.form.campos["baffle_mm"].set(250.0)
+    win._ajustar_baffle()
+    check(win.form.campos["baffle_mm"].get() == round(win.ultimo_D_s * 500.0, 1),
+          "el boton 1/2·D_s ajusta B a 0.5·D_s tras un calculo")
+    D_s_previo = win.ultimo_D_s
+    win.ultimo_D_s = None
+    win.form.campos["baffle_mm"].set(250.0)
+    avisos.clear()
+    win._ajustar_baffle()
+    check(bool(avisos) and win.form.campos["baffle_mm"].get() == 250.0,
+          "sin calculo previo el boton explica y no toca el campo")
+    win.ultimo_D_s = D_s_previo
+
     for vista in A.drawings.VISTAS:
         win._ir_a_vista(vista)
         win.update()
@@ -426,14 +476,14 @@ def probar_gui() -> None:
     win.form.campos["tipo_carcasa"].set("E")
     win.form.campos["cab_trasero"].set("M")
 
-    # Guardado y lectura de un proyecto .he.
-    ruta = os.path.join(tempfile.gettempdir(), "_verificar_tmp.he")
+    # Guardado y lectura de un proyecto .bb.
+    ruta = os.path.join(tempfile.gettempdir(), "_verificar_tmp.bb")
     win._escribir(ruta)
     win.form.campos["m_cal"].set(999.0)
     from src.gui import io_state
     win.form.cargar(io_state.abrir(ruta))
     check(win.form.campos["m_cal"].var.get() == str(A.VALORES_DEFECTO["m_cal"]),
-          "ida y vuelta de un proyecto .he")
+          "ida y vuelta de un proyecto .bb")
     os.remove(ruta)
 
     # Validacion de formulario: campo obligatorio vacio.
@@ -441,7 +491,7 @@ def probar_gui() -> None:
     win.form.campos["m_fri"].set("")
     win._calcular_sizing()
     win.update()
-    check(bool(avisos) and win.form.campos["m_fri"].entry.cget("bg") != "#ffffff",
+    check(bool(avisos) and win.form.campos["m_fri"].en_error,
           "campo vacio: avisa y lo resalta en rojo")
     win.form.campos["m_fri"].set(A.VALORES_DEFECTO["m_fri"])
 
@@ -452,11 +502,11 @@ def probar_gui() -> None:
     fluido_previo = win.form.campos["fluido_cal"].var.get()
     try:
         win.form.cargar({"fluido_cal": "Plutonio fundido"})
-        check(False, "un fluido desconocido en un .he se reporta")
+        check(False, "un fluido desconocido en un .bb se reporta")
     except Exception as exc:
         check(type(exc).__name__ == "CampoInvalido"
               and win.form.campos["fluido_cal"].var.get() == fluido_previo,
-              "un fluido desconocido en un .he se reporta y no se aplica",
+              "un fluido desconocido en un .bb se reporta y no se aplica",
               f"{type(exc).__name__}")
 
     # Cada ejemplo distribuido debe usar las etiquetas canonicas exactas, o la
@@ -521,6 +571,25 @@ def probar_gui() -> None:
 # =============================================================================
 # 7. EJEMPLOS DISTRIBUIDOS
 # =============================================================================
+# Avisos esperados por ejemplo: 0 salvo los casos de referencia de Tan & Fok,
+# cuya geometria impuesta por el articulo los provoca de forma reproducible
+# (baja velocidad por continuidad, regimen no turbulento). Declararlos aqui
+# permite seguir detectando cualquier aviso NUEVO en cualquier ejemplo.
+AVISOS_ESPERADOS = {
+    "09_sinnott_metanol_agua_sizing.bb": 2,
+    "10_karimi_metanol_agua_mar_sizing.bb": 3,
+    "11_janna_agua_agua_sizing.bb": 3,
+    "12_kern_ej74_agua_agua_sizing.bb": 1,
+    "13_janna_agua_agua_rating.bb": 2,
+    "14_kern_ej74_agua_agua_rating.bb": 1,
+    "15_msubbu_metanol_agua_rating.bb": 2,
+    "16_karimi_metanol_agua_mar_rating.bb": 3,
+    "06_tan_fok_sizing.bb": 7,
+    "07_tan_fok_rating.bb": 4,
+    "08_tan_fok_rating_parcial.bb": 4,
+}
+
+
 def probar_ejemplos() -> None:
     bloque("7. Proyectos de ejemplo (carpeta ejemplos/)")
     from src.gui import controller as ctrl, io_state
@@ -529,9 +598,15 @@ def probar_ejemplos() -> None:
     if not os.path.isdir(DIR_EJEMPLOS):
         check(False, "existe la carpeta ejemplos/")
         return
-    archivos = sorted(a for a in os.listdir(DIR_EJEMPLOS)
-                      if a.endswith(io_state.EXTENSION))
-    check(len(archivos) >= 4, f"hay {len(archivos)} proyectos de ejemplo")
+    # Los ejemplos estan divididos por modo: ejemplos/sizing y ejemplos/rating.
+    archivos = sorted(
+        os.path.relpath(os.path.join(raiz, a), DIR_EJEMPLOS).replace("\\", "/")
+        for raiz, _, nombres in os.walk(DIR_EJEMPLOS)
+        for a in nombres if a.endswith(io_state.EXTENSION))
+    check(len(archivos) >= 8, f"hay {len(archivos)} proyectos de ejemplo")
+    check(any(a.startswith("sizing/") for a in archivos)
+          and any(a.startswith("rating/") for a in archivos),
+          "los ejemplos estan divididos en sizing y rating")
 
     for archivo in archivos:
         ruta = os.path.join(DIR_EJEMPLOS, archivo)
@@ -544,17 +619,29 @@ def probar_ejemplos() -> None:
                              "cab_frontal", "cab_trasero", "mat_carcasa"):
                     datos[clave] = valor
                 else:
-                    datos[clave] = float(valor) if str(valor).strip() else None
+                    datos[clave] = (float(valor)
+                    if valor is not None and str(valor).strip()
+                    else None)
             faltan = set(VALORES_DEFECTO) - set(datos)
             if faltan:
                 check(False, f"{archivo}: completo", f"faltan {faltan}")
                 continue
-            r = ctrl.correr_sizing(datos)
-            m = ctrl.correr_mecanico(datos, r.D_s, r.N_tt, r.T_h_out, r.T_c_out)
+            # Los casos de referencia de Tan & Fok no llevan temperatura de
+            # salida: son de rating (la geometria del articulo es la entrada).
+            if datos["tout_fri"] is None and datos["tout_cal"] is None:
+                r = ctrl.correr_rating(datos)
+                n_tt, d_s = int(datos["n_tt"]), datos["d_s_mm"] / 1000.0
+            else:
+                r = ctrl.correr_sizing(datos)
+                n_tt, d_s = r.N_tt, r.D_s
+            m = ctrl.correr_mecanico(datos, d_s, n_tt, r.T_h_out, r.T_c_out)
             adv = len(r.advertencias) + len(m.advertencias)
-            check(adv == 0,
-                  f"{archivo}: q={r.q/1000:.0f} kW, {r.N_tt} tubos, "
-                  f"D_s={r.D_s*1000:.0f} mm, sin advertencias",
+            esperados = AVISOS_ESPERADOS.get(os.path.basename(archivo), 0)
+            check(adv == esperados,
+                  f"{archivo}: q={r.q/1000:.0f} kW, {n_tt} tubos, "
+                  f"D_s={d_s*1000:.0f} mm, "
+                  + ("sin advertencias" if adv == 0
+                     else f"{adv} advertencias esperadas"),
                   f"{adv} advertencias")
         except Exception as exc:
             check(False, f"{archivo}: calcula sin error",

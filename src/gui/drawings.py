@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# © 2026 Diego Nicolás Bohórquez Barón · propiedad intelectual del autor.
 """
 drawings.py - Vistas esquematicas 2D parametricas (Canvas de Tkinter).
 
@@ -135,6 +136,12 @@ def _titulo(canvas, texto: str, subtitulo: str = "") -> None:
     if subtitulo:
         canvas.create_text(14, 34, text=subtitulo, anchor="nw",
                            fill="#6d5b95", font=("Segoe UI", 8))
+    # Los esquemas son academicos: acompañan el calculo, no son planos de
+    # fabricacion (requisito de entrega, seccion 2.2 del pliego).
+    canvas.create_text(14, (canvas.winfo_height() or 520) - 12,
+                       text="Esquema con fines académicos · No es plano de "
+                            "fabricación",
+                       anchor="sw", fill="#8795a1", font=("Segoe UI", 7))
 
 
 def _sin_datos(canvas, mensaje: str) -> Dict[str, str]:

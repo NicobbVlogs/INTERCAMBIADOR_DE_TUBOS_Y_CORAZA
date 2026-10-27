@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# © 2026 Diego Nicolás Bohórquez Barón · propiedad intelectual del autor.
 """
 thermo_data.py  --  Base de datos termofisica (FASE 1 / CORE)
 ================================================================================
@@ -227,8 +228,12 @@ _FLUIDS: Dict[str, _FluidDef] = {
         lambda T, P: _visc(T, *_ET_MU),
     ),
     "metanol": _FluidDef(
-        "Metanol", "liquido", 273.15, 333.15,
-        "Liquido. Punto de ebullicion normal: 64.7 C (337.8 K).",
+        "Metanol", "liquido", 273.15, 373.15,
+        "Liquido (presurizado por encima del punto de ebullicion normal: "
+        "64.7 C / 337.8 K). La ventana cubre hasta 100 C como liquido a "
+        "presion, tal como trabajan los ejercicios de referencia de la "
+        "literatura (condensado a 95 C); contrastado con las propiedades "
+        "publicadas por Sinnott & Towler (Ej. 12.1) a 67.5 C dentro del 2 %.",
         lambda T, P: _poly(T, 303.15, _ME_RHO),
         lambda T, P: _poly(T, 303.15, _ME_CP),
         lambda T, P: _poly(T, 303.15, _ME_K),

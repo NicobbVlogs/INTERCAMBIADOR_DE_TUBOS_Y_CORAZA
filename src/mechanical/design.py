@@ -1,3 +1,4 @@
+# © 2026 Diego Nicolás Bohórquez Barón · propiedad intelectual del autor.
 """
 DISENO MECANICO - Estandar TEMA Clase "C" (+ ASME VIII Div. 1 para espesores)
 ================================================================================

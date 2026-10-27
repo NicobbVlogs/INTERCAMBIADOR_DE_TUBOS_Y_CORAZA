@@ -1,3 +1,4 @@
+REM © 2026 Diego Nicolás Bohórquez Barón · propiedad intelectual del autor.
 @echo off
 REM ---------------------------------------------------------------
 REM  Lanzador del software de intercambiadores de tubos y coraza.

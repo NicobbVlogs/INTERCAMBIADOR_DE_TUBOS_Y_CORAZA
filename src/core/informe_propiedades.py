@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# © 2026 Diego Nicolás Bohórquez Barón · propiedad intelectual del autor.
 """
 informe_propiedades.py - Genera el informe PDF de procedencia de las
 propiedades termofisicas en LaTeX (compilado con Tectonic).

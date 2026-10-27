@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
+# © 2026 Diego Nicolás Bohórquez Barón · propiedad intelectual del autor.
 """
-io_state.py - Persistencia del estado del formulario en archivos `.he`.
+io_state.py - Persistencia del estado del formulario en archivos `.bb`.
 
 Formato: JSON plano con una cabecera de version. Solo se guardan los INPUTS;
 los resultados se recalculan al abrir, de modo que un archivo viejo nunca
@@ -13,13 +14,17 @@ from typing import Any, Dict
 
 FORMATO = "intercambiador-tubos-coraza"
 VERSION = 1
-EXTENSION = ".he"
-TIPOS_ARCHIVO = [("Intercambiador (*.he)", "*.he"), ("Todos", "*.*")]
+AUTOR = "Diego Nicolás Bohórquez Barón"
+EXTENSION = ".bb"
+TIPOS_ARCHIVO = [("Intercambiador (*.bb)", "*.bb"),
+                 ("Proyecto heredado (*.he)", "*.he"), ("Todos", "*.*")]
 
 
 def guardar(ruta: str, datos: Dict[str, Any], descripcion: str = "") -> None:
     paquete = {"formato": FORMATO, "version": VERSION,
-               "descripcion": descripcion, "inputs": datos}
+               "descripcion": descripcion, "inputs": datos,
+               # Marca de autoría: viaja dentro de cada proyecto .bb.
+               "autor": AUTOR, "copyright": f"© 2026 {AUTOR}"}
     with open(ruta, "w", encoding="utf-8") as fh:
         json.dump(paquete, fh, indent=2, ensure_ascii=False)
 
@@ -39,7 +44,7 @@ def abrir(ruta: str) -> Dict[str, Any]:
             paquete = json.load(fh)
         except json.JSONDecodeError as exc:
             raise ValueError(
-                f"El archivo no es un proyecto .he válido (JSON corrupto).\n\n"
+                f"El archivo no es un proyecto .bb válido (JSON corrupto).\n\n"
                 f"Detalle: {exc}")
     if not isinstance(paquete, dict) or paquete.get("formato") != FORMATO:
         raise ValueError(
@@ -51,5 +56,5 @@ def abrir(ruta: str) -> Dict[str, Any]:
             f"(v{paquete['version']}) que esta aplicación (v{VERSION}).")
     inputs = paquete.get("inputs", {})
     if not isinstance(inputs, dict):
-        raise ValueError("El archivo .he no contiene un bloque de datos válido.")
+        raise ValueError("El archivo .bb no contiene un bloque de datos válido.")
     return inputs
