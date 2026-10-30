@@ -421,7 +421,7 @@ def diametro_equivalente(P_T: float, D_o: float, layout: int) -> float:
 
 
 def nusselt_tubos(Re: float, Pr: float, D_i: float, L: float,
-                  phi: float) -> Tuple[float, str]:
+                  phi: float, calentando: bool = True) -> Tuple[float, str]:
     """
     Nusselt interno de tubos. Devuelve (Nu, regimen). Cubre TODO el espectro:
 
@@ -443,6 +443,10 @@ def nusselt_tubos(Re: float, Pr: float, D_i: float, L: float,
                        para que Nu(Re) quede CONTINUA en el solver.
     phi              : correccion por viscosidad de pared (mu/muw)^0.14
                        (Sieder-Tate 1936).
+    calentando       : True si el fluido se calienta (Tw > Tm), False si se
+                       enfria. Solo afecta a la rama de Dittus-Boelter, que
+                       tiene DOS formas: n = 0.4 (calentamiento) y
+                       n = 0.3 (enfriamiento), segun Incropera ec. 6.61.
     """
     def _hausen() -> float:
         Gz = (D_i / L) * Re * Pr
@@ -456,7 +460,14 @@ def nusselt_tubos(Re: float, Pr: float, D_i: float, L: float,
         return nu * (1.0 + (D_i / L) ** (2.0 / 3.0))
 
     def _dittus() -> float:
-        return 0.023 * Re ** 0.8 * Pr ** (1.0 / 3.0)
+        # Dittus-Boelter (1930), forma clasica con DOS exponentes segun la
+        # direccion del flujo de calor (Incropera ec. 6.61):
+        #   n = 0.4 si el fluido se calienta (Tw > Tm)
+        #   n = 0.3 si el fluido se enfría (Tw < Tm)
+        # La direccion ya esta contenida en n, por lo que esta forma NO
+        # incorpora phi: aplicar ambas correcciones duplicaria el efecto.
+        n = 0.4 if calentando else 0.3
+        return 0.023 * Re ** 0.8 * Pr ** n
 
     def _mezcla(nu_a: float, nu_b: float, w: float) -> float:
         return math.exp((1.0 - w) * math.log(max(nu_a, 1e-12))
@@ -470,7 +481,7 @@ def nusselt_tubos(Re: float, Pr: float, D_i: float, L: float,
     if Re < 5.0e6:
         regimen = "transicion" if Re < 1.0e4 else "turbulento"
         return _gnielinski() * phi, regimen
-    return _dittus() * phi, "turbulento"
+    return _dittus(), "turbulento"
 
 
 def nusselt_coraza(Re: float, Pr: float, phi: float,
@@ -852,12 +863,13 @@ def dimensionar(caliente: Stream, fria: Stream,
         # 5. Correccion por viscosidad de pared (lazo interno acotado y
         #    determinista: se repite hasta que phi deja de moverse).
         phi_t = phi_s = 1.0
-        Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tubos.D_i, tubos.L, phi_t)
+        Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tubos.D_i, tubos.L, phi_t,
+                                 calentando=(T_t_m < T_s_m))
         Nu_s, regimen_s = nusselt_coraza(Re_s, est_s.Pr, phi_s, D_e, coraza.B)
         h_i = h_o = 0.0
         for _ in range(40):
             Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tubos.D_i, tubos.L,
-                                          phi_t)
+                                          phi_t, calentando=(T_t_m < T_s_m))
             Nu_s, regimen_s = nusselt_coraza(Re_s, est_s.Pr, phi_s, D_e,
                                              coraza.B)
             h_i = Nu_t * est_t.k / tubos.D_i
@@ -964,7 +976,8 @@ def dimensionar(caliente: Stream, fria: Stream,
     phi_t = phi_s = 1.0
     h_i = h_o = 0.0
     for _ in range(40):
-        Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tubos.D_i, tubos.L, phi_t)
+        Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tubos.D_i, tubos.L, phi_t,
+                                 calentando=(T_t_m < T_s_m))
         Nu_s, regimen_s = nusselt_coraza(Re_s, est_s.Pr, phi_s, D_e, coraza.B)
         h_i = Nu_t * est_t.k / tubos.D_i
         h_o = Nu_s * est_s.k / D_e

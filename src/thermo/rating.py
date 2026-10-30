@@ -212,7 +212,8 @@ def _coeficientes(geom: ExchangerGeometry, por_tubos: Stream, por_coraza: Stream
     U = h_i = h_o = 0.0
     regimen = regimen_s = ""
     for _ in range(40):
-        Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tb.D_i, tb.L, phi_t)
+        Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tb.D_i, tb.L, phi_t,
+                                 calentando=(T_t_m < T_s_m))
         Nu_s, regimen_s = nusselt_coraza(Re_s, est_s.Pr, phi_s, D_e,
                                          geom.coraza.B)
         h_i = Nu_t * est_t.k / tb.D_i
