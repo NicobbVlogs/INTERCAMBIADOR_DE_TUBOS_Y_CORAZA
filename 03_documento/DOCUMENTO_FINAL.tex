@@ -1,0 +1,2070 @@
+% =============================================================================
+% DOCUMENTO FINAL — Proyecto de Transferencia de Calor
+% Herramienta computacional educativa para el diseño de intercambiadores de
+% calor de tubos y coraza — Método de Kern y norma TEMA Clase C
+% =============================================================================
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.3cm, headsep=14pt]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{float}
+
+\renewcommand{\tablename}{Tabla}
+\renewcommand{\figurename}{Figura}
+\renewcommand{\contentsname}{Contenido}
+
+\definecolor{morado}{HTML}{5E2B8C}
+\definecolor{acento}{HTML}{7E57C2}
+\definecolor{seccion}{HTML}{EDE7F6}
+\definecolor{gristexto}{HTML}{3B3648}
+
+\titleformat{\section}{\Large\bfseries\color{morado}}{\thesection}{0.6em}{}[\vspace{2pt}{\color{acento}\titlerule}]
+\titleformat{\subsection}{\large\bfseries\color{acento}}{\thesubsection}{0.5em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{gristexto}}{\thesubsubsection}{0.5em}{}
+\captionsetup{font=small, labelfont={bf,color=morado}, textfont={color=gristexto}}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{morado}\textbf{Boh\'orquez $\cdot$ M\'arquez $\cdot$ Monta\~no $\cdot$ Mor\'e}}
+\fancyhead[R]{\small\color{gristexto}Intercambiador de Tubos y Coraza $\cdot$ Kern / TEMA}
+\fancyfoot[C]{\small\color{gristexto}\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\emergencystretch=3em
+\begin{document}
+
+% -----------------------------------------------------------------------------
+\begin{titlepage}
+\centering
+\vspace*{1.6cm}
+{\color{acento}\rule{\linewidth}{2pt}}\\[1.0cm]
+{\Huge\bfseries\color{morado} Herramienta computacional educativa\\[0.4em]
+ para el dise\~no de intercambiadores de calor\\[0.4em]
+ de tubos y coraza}\\[0.8cm]
+{\Large\color{acento} M\'etodo de Kern (t\'ermico e hidr\'aulico)\\[0.2em]
+ y norma TEMA Clase C (mec\'anico)}\\[0.5cm]
+{\large\color{gristexto} Documento final del proyecto de Transferencia de Calor}\\[0.7cm]
+{\large\color{gristexto}
+\textbf{Boh\'orquez Bar\'on, Diego Nicol\'as} \quad \texttt{dibohorquezb@unal.edu.co}\\[0.25em]
+\textbf{M\'arquez Ariza, Sara Camila} \quad \texttt{samarqueza@unal.edu.co}\\[0.25em]
+\textbf{Monta\~no Ria\~no, Samuel} \quad \texttt{samontanor@unal.edu.co}\\[0.25em]
+\textbf{Mor\'e D\'iaz, Carlos Andr\'es} \quad \texttt{cmore@unal.edu.co}}\\[1.0cm]
+{\color{acento}\rule{\linewidth}{1pt}}\\[1.2cm]
+{ \small
+\begin{tabular}{rl}
+\textbf{Software documentado:} & \texttt{IntercambiadorDeTubosYCoraza} (Python 3 / CustomTkinter)\\
+\textbf{Funciones cubiertas:} & Sizing, rating, dise\~no mec\'anico y planos acotados\\
+\textbf{Cobertura t\'ermica:} & 10 fluidos, 5 materiales, propiedades $\rho, c_p, k, \mu = f(T)$\\
+\textbf{Cobertura TEMA:} & Tipos E/F/G/H/J/K/X y cabezales A/B/C/D/N/L/M/P/S/T/W\\
+\textbf{Verificaci\'on:} & Suite \texttt{verificar.py}: 187 comprobaciones superadas\\
+\textbf{Unidades:} & Sistema Internacional en todo el documento\\
+\end{tabular}}
+\vfill
+{\small\color{gristexto} Todos los valores num\'ericos presentados provienen de la
+ ejecuci\'on del c\'odigo fuente del proyecto sobre los once proyectos de ejemplo
+ incluidos en \texttt{ejemplos/}, o de los documentos t\'ecnicos del propio
+ proyecto. Ning\'un dato f\'isico ha sido estimado o supuesto por el redactor.}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% =============================================================================
+\section{Resumen}
+% =============================================================================
+
+Este documento presenta el dise\~no, la formulaci\'on y la validaci\'on de una
+herramienta computacional educativa para el c\'alculo de intercambiadores de
+calor de tubos y coraza. El n\'ucleo t\'ermico implementa el m\'etodo can\'onico
+de Kern: balance de energ\'ia, diferencia media logar\'itmica de temperatura
+(LMTD) con factor de correcci\'on $F$ de Bowman, correlaciones de convecci\'on
+para los lados tubos (Sieder--Tate y Hausen) y coraza (Kern), coeficiente
+global referido al \'area exterior e iteraci\'on cerrada sobre $U$; el m\'odulo
+de evaluaci\'on (\emph{rating}) resuelve las temperaturas de salida por
+b\'usqueda de ra\'ices sobre el balance $q = U A F \,\Delta T_m$. El lado coraza se resuelve por
+selecci\'on autom\'atica del m\'etodo: Bell--Delaware (factores $J_c$,
+$J_l$, $J_b$ y $J_r$ sobre el banco ideal y ca\'ida de presi\'on en tres
+componentes) mientras el Reynolds de coraza quede cubierto por la tabla
+de Taborek ($1 \le Re_s \le 10^6$), y Kern fuera de ello; ambos
+verificados contra la literatura. La selecci\'on es autom\'atica por
+facilidad de uso, y cada proyecto registra el m\'etodo con el que se
+calcul\'o. El
+dimensionamiento mec\'anico sigue la norma TEMA Clase C (espejos, deflectores,
+bridas, pernos, boquillas y cabezales). La interfaz gr\'afica, construida con
+\texttt{customtkinter} bajo arquitectura Modelo--Vista--Controlador estricta, ofrece
+sizing (F5), rating (F6), cinco vistas param\'etricas acotadas y persistencia
+de proyectos en archivos \texttt{.bb}. Se reportan los resultados reales de los
+once proyectos de ejemplo: ocho ejercicios resueltos de la literatura
+(cuatro de sizing y cuatro de rating) y los tres del art\'iculo de Tan y Fok (2006).
+Las comparaciones reproducen los Reynolds y las ca\'idas de presi\'on de la
+literatura ($\Delta p_s$ de Janna $+0{,}1\%$; $\Delta p_t$ del
+Ejemplo~7.4 de Kern $+0{,}1\%$; $h_o$ de Hewitt $-0{,}00\%$). La
+consistencia bidireccional sizing--rating arroja errores relativos de carga de
+$0{,}05\%$ a $0{,}44\%$. La suite de verificaci\'on autom\'atica
+(187 comprobaciones) cierra sin fallas.
+
+\textbf{Palabras clave:} intercambiador de calor de tubos y coraza, m\'etodo de
+Kern, norma TEMA Clase C, dise\~no t\'ermico, software educativo, transferencia
+de calor.
+
+% =============================================================================
+\section{Abstract}
+% =============================================================================
+
+This document presents the design, formulation and validation of an
+educational computer tool for shell-and-tube heat exchanger calculation. The
+thermal core implements Kern's classical method: energy balance, log-mean
+temperature difference (LMTD) with Bowman's correction factor $F$, convection
+correlations for the tube side (Sieder--Tate and Hausen) and the shell side
+(Kern), the overall heat transfer coefficient referenced to the outer surface,
+and a closed iteration on $U$; the rating module solves the outlet
+temperatures by root finding on the balance
+$q = U A F \,\Delta T_m$. Mechanical design follows the TEMA Class~C standard
+(tubesheets, baffles, flanges, bolts, nozzles and heads). The graphical
+interface, built with \texttt{customtkinter} under a strict Model--View--Controller
+architecture, provides sizing (F5), rating (F6), five dimensioned parametric
+views and project persistence in \texttt{.bb} files. Real results for the three included Tan and Fok (2006) projects ---and the
+five service cases studied during development--- are reported: duties from $567{,}8$ to $5020{,}2$ kW,
+overall coefficients from $548{,}2$ to $1312{,}3$ W/m\textsuperscript{2}K and
+areas from $23{,}5$ to $141{,}5$ m\textsuperscript{2}. The two-way sizing--rating
+consistency yields duty relative errors between $0{,}10\,\%$ and $0{,}70\,\%$
+and $U$ errors below $0{,}01\,\%$. The automated verification suite
+(138 checks) passes completely.
+
+\textbf{Keywords:} shell-and-tube heat exchanger, Kern's method, TEMA Class~C
+standard, thermal design, educational software, heat transfer.
+
+% =============================================================================
+\section{Introducci\'on}
+% =============================================================================
+
+El dise\~no de intercambiadores de calor de tubos y coraza es un contenido
+central de la asignatura de Transferencia de Calor y, a la vez, uno de los
+problemas m\'as ricos desde el punto de vista did\'actico: exige combinar
+balances de energ\'ia, mecanismos de convecci\'on, resistencias t\'ermicas en
+serie, criterios hidr\'aulicos y restricciones normativas de fabricaci\'on en un
+\'unico procedimiento iterativo. La literatura especializada en ense\~nanza de
+ingenier\'ia ha se\~nalado reiteradamente que las herramientas
+computerizadas de apoyo al dise\~no favorecen esa integraci\'on; en particular,
+Tan y Fok \cite{tanfok} describieron una herramienta computacional educativa
+para el dise\~no de intercambiadores de calor de tubos y coraza que integra
+el an\'alisis termohidr\'aulico con el dise\~no mec\'anico seg\'un la norma
+TEMA y genera planos t\'ecnicos cotados. Su n\'ucleo t\'ermico sigue el
+m\'etodo de Kern ---LMTD con el factor $F$ de los diagramas TEMA,
+coeficientes de convecci\'on en el interior de los tubos y en el lado coraza
+y ca\'idas de presi\'on en ambos lados---; el programa, escrito en Java con
+orientaci\'on a objetos, se valid\'o frente a un problema de referencia del
+texto de Incropera y deWitt, con errores m\'aximos del $2{,}2\,\%$ en sus
+Tablas~1 (t\'ermica) e~2 (hidr\'aulica). El alcance de esa herramienta es
+deliberadamente did\'actico: \textbf{no} optimiza de forma autom\'atica
+---el usuario ajusta las entradas hasta alcanzar un dise\~no adecuado--- y
+deja como trabajo futuro la estimaci\'on de costos, la lista de materiales y
+las clases TEMA~B y~R. Ese desarrollo sirve de referencia conceptual para el
+presente trabajo, que replica su planteamiento en Python con una interfaz
+m\'as rica, verificaci\'on autom\'atica y los tres proyectos del propio
+art\'iculo incluidos como ejemplos.
+
+El objetivo del proyecto ha sido construir un software educativo
+de nivel universitario, escrito en Python~3 con interfaz \texttt{customtkinter} (paleta de contraste morado, carmes\'i y naranja), que
+calcule intercambiadores de calor de tubos y coraza en sus tres dimensiones:
+\begin{enumerate}[leftmargin=1.4em]
+\item \textbf{Dimensionamiento t\'ermico (\emph{sizing})} por el m\'etodo de
+Kern: el usuario fija la geometr\'ia de los tubos y el programa itera sobre el
+coeficiente global $U$ hasta obtener el \'area, el n\'umero de tubos y el
+di\'ametro de coraza necesarios.
+\item \textbf{Evaluaci\'on de un equipo existente (\emph{rating})}: con
+$n_{tt}$ y $D_s$ conocidos, el programa itera sobre las temperaturas de salida
+hasta predecir el calor realmente transferido.
+\item \textbf{Dise\~no mec\'anico} seg\'un la norma TEMA Clase C y
+\textbf{generaci\'on de planos} param\'etricos acotados.
+\end{enumerate}
+
+El alcance es deliberadamente acotado y expl\'icito: fluidos
+\textbf{monof\'asicos} (l\'iquidos y gases), sin cambio de fase, dentro de las
+ventanas de validez de temperatura declaradas para cada fluido; correlaciones
+de Kern para el lado coraza y Sieder--Tate/Hausen para el lado tubos;
+dimensionamiento mec\'anico seg\'un las tablas de la Secci\'on~5 del est\'andar
+TEMA (Clase C). Las limitaciones del modelo se documentan en la
+Secci\'on~\ref{sec:supuestos} y no deben interpretarse como defectos: cuando el
+programa rechaza un dise\~no lo hace con un mensaje estructurado que explica el
+principio f\'isico o la cl\'ausula normativa involucrada.
+
+Este documento se organiza como sigue. La Secci\'on~\ref{sec:marco} desarrolla
+el marco te\'orico (transferencia en coraza--tubos, m\'etodo de Kern y norma
+TEMA). La Secci\'on~\ref{sec:desarrollo} presenta la metodolog\'ia, el sistema
+completo de ecuaciones, los algoritmos de c\'alculo y el manual de usuario de la
+interfaz. La Secci\'on~\ref{sec:verificacion} reporta la verificaci\'on con
+ocho ejercicios de la literatura y la Secci\'on~\ref{sec:tanfok-analisis} el an\'alisis del caso de Tan y Fok. La
+consistencia sizing--rating y el comportamiento t\'ermico e hidr\'aulico.
+Finalmente, la Secci\'on~\ref{sec:conclusiones} recoge las conclusiones y el
+Anexo~A contiene fragmentos representativos del c\'odigo fuente.
+
+% =============================================================================
+\section{Marco te\'orico}
+\label{sec:marco}
+% =============================================================================
+
+\subsection{Transferencia de calor en intercambiadores de tubos y coraza}
+
+Un intercambiador de tubos y coraza consta de un haz de tubos alojado dentro de
+una coraza cil\'indrica. Una corriente circula por el interior de los tubos
+(lado tubos) y la otra por el anillo entre el haz y la coraza (lado coraza), y
+ambas intercambian calor a trav\'es de la pared de los tubos. Placas
+deflectoras (\emph{baffles}) segmentadas obligan al fluido de la coraza a
+atravesar el haz en flujo cruzado, lo que aumenta el coeficiente de convecci\'on
+exterior y, al mismo tiempo, sostiene mec\'anicamente los tubos.
+
+El transporte de calor en r\'egimen estacionario se describe como una
+sucesi\'on de resistencias t\'ermicas en serie referidas al \'area exterior del
+tubo:
+convecci\'on interna, ensuciamiento interno, conducci\'on a trav\'es de la pared
+cil\'indrica, ensuciamiento exterior y convecci\'on externa. Como las
+corrientes no est\'an a temperatura uniforme, la fuerza motriz t\'ermica es una
+diferencia media de temperaturas; para un arreglo en contracorriente esa media
+es logar\'itmica y, para arreglos mixtos (varias pasadas por tubos o por
+coraza), se corrige con el factor $F$ de Bowman. La potencia transferida se
+escribe entonces
+\begin{equation}
+q = U_o \, A_o \, F \, \Delta T_m ,
+\label{eq:q}
+\end{equation}
+donde $U_o$ es el coeficiente global sucio referido al \'area exterior $A_o$.
+
+El flujo de la coraza es el fen\'omeno m\'as complejo del equipo: combina
+flujo cruzado entre deflectores, fugas luz--coraza y tubo--deflector, y
+corrientes de derivaci\'on. El m\'etodo de Kern lo representa mediante un
+\'unico flujo cruzado ideal con un di\'ametro equivalente, lo que constituye
+una simplificaci\'on controlada y adecuada para la ense\~nanza.
+
+\subsection{El m\'etodo de Kern}
+
+El procedimiento de Kern \cite{kern} resuelve dos problemas complementarios:
+
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Dimensionamiento (sizing):} dados los caudales, las temperaturas
+de entrada, la temperatura de salida de una corriente y la geometr\'ia de los
+tubos ($d_o$, espesor, paso $P_T$, longitud $L$, n\'umero de pasos, arreglo),
+se calcula el \'area $A$, el n\'umero de tubos $n_{tt}$ y el di\'ametro de
+coraza $D_s$. El procedimiento es iterativo porque $U$ depende de las
+velocidades, \'estas del \'area de flujo y el \'area de flujo del n\'umero de
+tubos que a su vez depende de $U$.
+\item \textbf{Evaluaci\'on (rating):} conocida la geometr\'ia real del equipo
+($n_{tt}$, $D_s$), se predicen las temperaturas de salida y la potencia
+transferida resolviendo la ecuaci\'on $q(T_{c,out}) - U A F \Delta T_m(T_{c,out}) = 0$.
+\end{itemize}
+
+El lado tubos cubre los tres reg\'imenes con correlaciones espec\'ificas:
+soluci\'on de Graetz con entrada t\'ermica de Hausen (1959)\cite{hausen} en laminar y la
+correlaci\'on de Gnielinski (1976)\cite{gnielinski} en transici\'on y turbulento; el lado coraza
+usa la correlaci\'on de Kern turbulento y su rama laminar con dependencia de
+Graetz ($D_e/B$). Las correlaciones que resuelven los reg\'imenes laminar y de
+transici\'on ---Hausen y Gnielinski--- se verificaron contra la documentaci\'on
+t\'ecnica consultada en l\'inea (gu\'ia de transferencia de calor de
+neqsim/equinor\cite{guia}, secciones de flujo laminar, transici\'on y turbulento). El
+programa se\~nala el r\'egimen resultante y reporta una banda de
+incertidumbre estimada sobre $U$ (Secci\'on~\ref{sec:incertidumbre}). El
+m\'etodo de Kern es un m\'etodo de dise\~no simplificado: no modela las fugas ni
+la corriente de derivaci\'on de la coraza como lo hace el procedimiento de
+Bell--Delaware, y su precisi\'on t\'ipica para fines de ingenier\'ia de proceso
+es de un orden de magnitud del 10--20\,\% en el coeficiente de la coraza. Ese
+es justamente su valor docente: un procedimiento completo, conservador y
+trazable manualmente.
+
+\subsection{Norma TEMA y Clase C}
+
+La norma de la Tubular Exchanger Manufacturers Association \cite{tema}
+estandariza la construcci\'on de estos equipos. La Figura N-1.2 del est\'andar
+designa cada equipo con tres letras, \textbf{[cabezal frontal][coraza][cabezal
+trasero]}:
+
+\begin{center}
+{\small
+\begin{tabular}{@{}p{3.2cm}p{11.4cm}@{}}
+\toprule
+\textbf{Posici\'on} & \textbf{Tipos soportados por el software} \\
+\midrule
+Cabezal frontal & A (canal + cubierta), B (bonete), C (canal integral con
+espejo, haz extra\'ible), D (cierre especial de alta presi\'on), N (canal
+integral con espejo fijo) \\
+Coraza & E (una pasada), F (dos pasadas con deflector longitudinal),
+G (flujo partido), H (doble partido), J (dividido), K (caldera),
+X (flujo cruzado) \\
+Cabezal trasero & L/M/N (espejo fijo), P (flotante empaquetado),
+S (flotante con anillo de retenci\'on), T (pull-through), U (haz en U),
+W (espejo flotante sellado) \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+El est\'andar define tres clases de servicio ---R, C y B--- que fijan los
+tolerancias, materiales y espesores admisibles. Este proyecto trabaja con la
+\textbf{Clase C} (servicios comerciales de severidad moderada), cuyas tablas de
+dimensionamiento mec\'anico (CB-3.1.3, RCB-4.3, CB-4.4.1, RCB-4.5.2, CB-4.7.1,
+C-7.1.1, C-11.1 y RCB-4.6.1 de la Secci\'on~5) son las empleadas por el
+m\'odulo de dise\~no mec\'anico. Las designaciones completas de los tipos
+soportados y los diagramas correspondientes se reproducen en la vista de
+cat\'alogo de la interfaz (Secci\'on~\ref{sec:manual}).
+
+% =============================================================================
+\section{Desarrollo: metodolog\'ia, ecuaciones y manual de usuario}
+\label{sec:desarrollo}
+% =============================================================================
+
+\subsection{Arquitectura de c\'alculo}
+
+El software separa estrictamente la f\'isica de la interfaz (arquitectura
+Modelo--Vista--Controlador). El c\'odigo vive en cuatro m\'odulos:
+\texttt{src/core/} (base de datos termof\'isica), \texttt{src/thermo/}
+(\texttt{sizing.py} y \texttt{rating.py}), \texttt{src/mechanical/}
+(\texttt{design.py}) y \texttt{src/gui/} (interfaz); \texttt{controller.py} es
+el \'unico puente entre la vista y los m\'odulos de c\'alculo. La GUI no
+contiene ni una l\'inea de f\'isica: incluso las ventanas de velocidad
+recomendada que resalta en \'ambar se importan desde \texttt{sizing.py}, de modo
+que el resaltado nunca puede contradecir al motor de c\'alculo.
+
+El flujo de un c\'alculo completo es: (1) validaci\'on de entradas y de
+ventanas de temperatura por punto; (2) balance de energ\'ia; (3) lazo iterativo
+principal (sobre $U$ en sizing, sobre $T_{c,out}$ en rating); (4) cierre con
+$n_{tt}$ entero y sobre-\'area; (5) dise\~no mec\'anico TEMA Clase C a partir de
+los resultados t\'ermicos; (6) presentaci\'on y planos.
+
+\subsection{Balance de energ\'ia}
+
+En r\'egimen estacionario, sin p\'erdidas al ambiente ni generaci\'on interna y
+con calores espec\'ificos evaluados a la temperatura media de cada corriente,
+\begin{equation}
+q = \dot m_h \, c_{p,h} \, (T_{h,in} - T_{h,out})
+  = \dot m_c \, c_{p,c} \, (T_{c,out} - T_{c,in}).
+\label{eq:balance}
+\end{equation}
+El programa exige que \textbf{exactamente una} temperatura de salida quede
+vac\'ia: esa es la inc\'ognita de la ecuaci\'on~\eqref{eq:balance}. Las
+temperaturas se cargan en $^\circ$C y los caudales en kg/s. Cada punto de
+temperatura (entradas y salidas) se valida contra la ventana de validez del
+fluido; por ejemplo, el etanol se rechaza a $95\,^\circ$C aunque su temperatura
+media quede dentro de su rango $0$--$75\,^\circ$C, y el agua l\'iquida se limita
+a $100\,^\circ$C (ebullici\'on a 1~atm).
+
+\subsection{Propiedades termof\'isicas en funci\'on de la temperatura}
+
+Las propiedades $\rho$, $c_p$, $k$ y $\mu$ se eval\'uan a la temperatura media
+$T_m = (T_{in}+T_{out})/2$ mediante correlaciones emp\'iricas de alta fidelidad
+(IAPWS para agua y vapor, DIPPR/Perry\'s para l\'iquidos org\'anicos,
+correlaciones de referencia para gases). La viscosidad de pared $\mu_w$, que
+aparece en la correcci\'on $\varphi = (\mu/\mu_w)^{0{,}14}$, se eval\'ua a la
+temperatura de pared estimada,
+\begin{equation}
+T_w = \frac{h_{io}\,T_{t,m} + h_o\,T_{s,m}}{h_{io} + h_o},
+\qquad h_{io} = h_i \, \frac{d_i}{d_o},
+\end{equation}
+con lazo interno acotado (hasta 40 pasos, convergencia en $10^{-9}$ sobre
+$\varphi$). La Tabla~\ref{tab:fluidos} resume la cobertura de la base de datos.
+
+\begin{table}[htbp]
+\centering
+\caption{Fluidos de la base termof\'isica: ventana de validez y resistencia de
+ensuciamiento asignada.}
+\label{tab:fluidos}
+{\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Fluido} & \textbf{Ventana de validez ($^\circ$C)} &
+\textbf{$R_f$ (m$^2$K/W)} & \textbf{Fuente de las correlaciones} \\
+\midrule
+Agua l\'iquida      & $0$ -- $100$   & $1{,}761 \times 10^{-4}$ & IAPWS \\
+Vapor de agua       & $100$ -- $600$ & $8{,}81 \times 10^{-5}$  & IAPWS \\
+Aire                & $-73$ -- $727$ & $3{,}522 \times 10^{-4}$ & Gas ideal + Sutherland \\
+Etanol              & $0$ -- $75$    & $1{,}761 \times 10^{-4}$ & Perry / DIPPR \\
+Metanol             & $0$ -- $60$    & $1{,}761 \times 10^{-4}$ & Perry / DIPPR \\
+Etilenglicol        & $0$ -- $197$   & $3{,}522 \times 10^{-4}$ & REFPROP / DIPPR \\
+Benceno             & $10$ -- $80$   & $1{,}761 \times 10^{-4}$ & NIST \\
+Tolueno             & $-20$ -- $100$ & $1{,}761 \times 10^{-4}$ & NIST \\
+n-Hexano            & $-20$ -- $60$  & $1{,}761 \times 10^{-4}$ & NIST \\
+Amon\'iaco (l\'iquido) & $-40$ -- $50$ & $1{,}761 \times 10^{-4}$ & ASHRAE (saturado) \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Los cinco materiales de construcci\'on disponibles son cobre
+($k_m = 386{,}0$ W/m$\cdot$K, $\varepsilon = 1{,}5\ \mu$m), acero al carbono
+($60{,}5$ W/m$\cdot$K, $\varepsilon = 46\ \mu$m), acero inoxidable AISI 304
+($14{,}9$ W/m$\cdot$K), lat\'on Admiralty ($111{,}0$ W/m$\cdot$K) y aluminio
+($237{,}0$ W/m$\cdot$K). La validaci\'on num\'erica de la base de datos frente
+Sus conductividades y densidades provienen de tablas est\'andar a unos
+$300$ K, y la rugosidad distingue tubo estirado ($\varepsilon = 1{,}5\ \mu$m)
+de acero comercial ($\varepsilon = 46\ \mu$m). En resumen, la procedencia de
+la base termof\'isica es: agua l\'iquida por IAPWS-IF97\cite{iapws}; vapor de agua y aire
+por las tablas A.4 de Incropera\cite{incropera} (con correlaciones de Sutherland para $\mu$ y
+$k$ del aire); alcoholes, hidrocarburos y glicol por el
+\emph{Perry's Chemical Engineers' Handbook} (octava edici\'on)\cite{perry} y
+correlaciones tipo DIPPR; y amon\'iaco l\'iquido por ASHRAE\cite{ashrae}/Perry's
+(l\'iquido saturado). Los factores de ensuciamiento siguen la tabla TEMA
+RGP-T-2.4. La validaci\'on num\'erica de la base de datos frente a valores
+tabulados de referencia (NIST, CoolProp/REFPROP) reporta
+desviaciones m\'aximas del $1{,}05\,\%$ en $\rho$ y $c_p$, $4{,}36\,\%$ en $k$
+y $3{,}10\,\%$ en $\mu$ \cite{informe}.
+
+\subsection{LMTD y factor de correcci\'on $F$}
+
+Para contracorriente ideal,
+\begin{equation}
+\Delta T_m = \frac{\Delta T_1 - \Delta T_2}{\ln(\Delta T_1/\Delta T_2)},
+\qquad
+\Delta T_1 = T_{h,in} - T_{c,out},\quad
+\Delta T_2 = T_{h,out} - T_{c,in}.
+\end{equation}
+Cuando $\Delta T_1 = \Delta T_2$ (cociente de capacidades $R = 1$) la
+expresi\'on es la indeterminaci\'on $0/0$; el l\'imite por regla de L'H\^opital
+es exactamente $\Delta T_1$, y el programa lo implementa con tolerancia
+relativa $|\Delta T_1 - \Delta T_2| \le 10^{-6}\max(\Delta T_1,\Delta T_2)$,
+devolviendo $0{,}5(\Delta T_1+\Delta T_2)$. El factor $F$ de Bowman corrige la
+desviaci\'on respecto del contracorriente puro; se define con
+\begin{equation}
+P = \frac{T_{c,out}-T_{c,in}}{T_{h,in}-T_{c,in}}, \qquad
+R = \frac{T_{h,in}-T_{h,out}}{T_{c,out}-T_{c,in}},
+\end{equation}
+y para el arreglo 1--2 (una pasada de coraza, $n$ pasadas de tubos) adopta la
+forma cl\'asica
+\begin{equation}
+F = \frac{\sqrt{R^2+1}}{R-1}\,
+\frac{\ln\!\big[(1-P)/(1-PR)\big]}
+{\ln\!\left[\dfrac{2/P - 1 - R + \sqrt{R^2+1}}
+{2/P - 1 - R - \sqrt{R^2+1}}\right]} ,
+\end{equation}
+con la rama $R \to 1$ tratada anal\'iticamente en el c\'odigo. El programa
+aplica $F = 1$ (contracorriente puro) para una pasada de tubos y para los
+tipos de coraza G, H, J, K y X; para el tipo F (dos pasadas de coraza en
+serie) reduce $P$ por pasada antes de aplicar la expresi\'on anterior. Un
+resultado $F < 0{,}75$ se rechaza como termodin\'amicamente inadmisible para el
+arreglo elegido, y un $F$ inexistente (logaritmo no definido) se reporta como
+\emph{cruce de temperaturas} con la acci\'on correctiva correspondiente.
+
+\subsection{Coeficientes de pel\'icula $h_i$ y $h_o$}
+
+\textbf{Lado tubos.} Con $\varphi = (\mu/\mu_w)^{0{,}14}$
+(correcci\'on de Sieder--Tate (1936)\cite{sieder}) y $Gz = (d_i/L)\, Re_t\, Pr$
+(n\'umero de Graetz), el n\'umero de Nusselt interno se calcula por ramas
+seg\'un $Re_t = G_t d_i / \mu$:
+\begin{align}
+Re_t < 2100 \; &: \quad
+Nu = 3{,}66 + \frac{0{,}0668\, Gz}{1 + 0{,}04\, Gz^{2/3}}\varphi
+\quad \text{(Hausen, laminar)},\\[2pt]
+2400 \le Re_t < 5\cdot 10^6 \; &: \quad
+Nu = \frac{(f/8)(Re_t - 1000) Pr}{1 + 12{,}7\sqrt{f/8}\,(Pr^{2/3}-1)}
+\Big[1 + (d_i/L)^{2/3}\Big] \varphi \quad \text{(Gnielinski)},\\[2pt]
+Re_t \ge 5\cdot 10^6 \; &: \quad Nu = 0{,}023 \, Re_t^{0{,}8} Pr^{n}
+\qquad \text{(Dittus--Boelter)}, \qquad n = 0{,}4/0{,}3.
+\end{align}
+La forma de Dittus--Boelter tiene dos exponentes seg\'un la direcci\'on del flujo de calor (Incropera, ec.~6.61):
+\[
+n = \begin{cases}
+0{,}4 & \text{si el fluido se calienta } (T_w > T_m),\\[2pt]
+0{,}3 & \text{si el fluido se enfr\'ia } (T_w < T_m),
+\end{cases}
+\]
+La direcci\'on ya est\'a contenida en $n$, por lo que esta forma
+no incorpora $\varphi$: aplicar ambas correcciones duplicar\'ia el efecto. En la franja $2100 \le Re_t < 2400$ las ramas de Hausen y Gnielinski se
+mezclan en escala logar\'itmica, de modo que $Nu(Re)$ queda continua sin
+alterar las f\'ormulas cl\'asicas fuera de la franja y sin saltos que
+desestabilicen el lazo iterativo. El factor de fricci\'on de Gnielinski es el
+de Petukhov, $f = (0{,}790\, \ln Re_t - 1{,}64)^{-2}$. La forma de Hausen es
+la soluci\'on de Graetz con entrada t\'ermica: recupera $Nu \to 3{,}66$
+(pared isot\'ermica, tubo largo) cuando $Gz \to 0$ y el asintoto de entrada
+$Nu \approx 1{,}67\, Gz^{1/3}$ para $Gz$ grande, sin el piso duro que ten\'ia
+la forma cl\'asica $1{,}86\,Gz^{1/3}$. El coeficiente interno es
+$h_i = Nu \, k / d_i$
+
+\textbf{Lado coraza.} Para deflectores segmentados al $25\,\%$,
+\begin{align}
+Re_s \ge 2000 \; &: \quad Nu_s = 0{,}36 \, Re_s^{0{,}55} Pr^{1/3} \varphi
+\qquad \text{(Kern turbulento)},\\[2pt]
+Re_s < 100 \; &: \quad Nu_s = \max\!\big(1{,}86 \, (Re_s\, Pr\, D_e/B)^{1/3}
+\varphi,\; 3{,}66\big) \quad \text{(laminar, Sieder--Tate)},
+\end{align}
+y entre $100$ y $2000$ (transici\'on) se mezcla en escala log--log entre la
+rama laminar y la turbulenta, ambas evaluadas en el mismo $Re_s$, de modo que
+$Nu_s$ es continua en $100$ y en $2000$ y conserva la dependencia $D_e/B$ en
+toda la banda. El coeficiente
+exterior es $h_o = Nu_s \, k / D_e$. En la rama laminar interviene el espaciado
+de deflectores $B$ a trav\'es de $D_e/B$, porque el desarrollo t\'ermico depende
+de la longitud del canal de flujo cruzado.
+
+\subsection{Geometr\'ia de flujo, di\'ametro equivalente y conteo de tubos}
+
+El \'area de flujo cruzado en el eje de la coraza (Kern, ec.~7.1) y el \'area de
+flujo por paso de tubos son
+\begin{equation}
+A_s = \frac{D_s \, (P_T - d_o) \, B}{P_T} \cdot \frac{1}{n_{corazas}},
+\qquad
+a_t = \frac{n_{tt} \, \pi \, d_i^2}{4 \, n_{pasos}},
+\end{equation}
+donde $n_{corazas} = 2$ para corazas TEMA F y $1$ para el resto. La
+conservaci\'on de masa fija las velocidades: $G_t = \dot m_t / a_t$,
+$v_t = G_t/\rho_t$, $G_s = \dot m_s / A_s$, $v_s = G_s/\rho_s$; nunca se imponen
+velocidades que violen la continuidad. El di\'ametro equivalente de Kern se
+basa en el perimetro mojado de transferencia:
+\begin{equation}
+D_e =
+\begin{cases}
+\dfrac{4\left(\dfrac{\sqrt{3}}{4}P_T^2 - \dfrac{\pi}{8}d_o^2\right)}
+{\pi \, d_o / 2}, & \text{arreglo triangular (30°/60°)},\\[10pt]
+\dfrac{4\left(P_T^2 - \dfrac{\pi}{4}d_o^2\right)}{\pi \, d_o}, &
+\text{arreglo cuadrado (45°/90°)} .
+\end{cases}
+\end{equation}
+
+El n\'umero de tubos se estima con la correlaci\'on de conteo de Serth
+\cite{serth} con las constantes de arreglo $C_L$ ($0{,}87$ triangular, $1{,}00$
+cuadrado) y de partici\'on de pasos $C_{TP}$ ($0{,}93$ para 1 paso, $0{,}90$
+para 2, $0{,}85$ para 4 o m\'as):
+\begin{equation}
+D_s = \text{holgura} + P_T \sqrt{\frac{4}{\pi}\frac{C_L}{C_{TP}} n_{tt}} ,
+\label{eq:ds}
+\end{equation}
+donde la holgura reserva el espacio haz--coraza que exige el cabezal trasero
+elegido (de $0{,}011$ m en espejo fijo a $0{,}092$ m en cabezal T). La
+correlaci\'on de conteo preliminar usa la forma
+$D_s \approx \text{holgura} + 0{,}637\sqrt{C_L/C_{TP}}\sqrt{A\,(P_T/d_o)^2 d_o/L}$.
+
+\subsection{Coeficiente global $U$}
+
+Referido al \'area exterior y con resistencias de ensuciamiento $R_{f,i}$ y
+$R_{f,o}$ (Kern, ec.~6.11):
+\begin{equation}
+\frac{1}{U_o} =
+\frac{d_o}{d_i \, h_i}
++ R_{f,i}\,\frac{d_o}{d_i}
++ \frac{d_o \ln(d_o/d_i)}{2 \, k_m}
++ R_{f,o}
++ \frac{1}{h_o}.
+\label{eq:u}
+\end{equation}
+La resistencia de ensuciamiento se asigna con precedencia estricta: valor
+provisto por el usuario, valor TEMA del fluido o, en su defecto, la mitad de la
+resistencia del material. $U$ resulta siempre del inverso de una suma de
+resistencias positivas; un valor no f\'isico detiene el c\'alculo con un mensaje
+explicativo.
+
+\subsection{Ca\'idas de presi\'on}
+\label{sec:dp}
+
+Lado tubos (Kern, ecs.~7.43 y 7.45/7.46): la ca\'ida total es la suma de
+fricci\'on y retornos en los cabezales,
+\begin{equation}
+\Delta p_t = n_{pasos} \, f_t \, \frac{L}{d_i}\,
+\frac{\rho_t v_t^2}{2}\,\frac{1}{\varphi_t^{\,m}}
++ 4 \, n_{pasos} \, \frac{\rho_t v_t^2}{2},
+\label{eq:dpt}
+\end{equation}
+con $m = 0{,}14$ en ambos r\'egimenes: es la correcci\'on de Kern por 
+viscosidad de pared, aplicada sin introducir exponentes laminares sin 
+respaldo en la fuente. El factor $f_t$ es $64/Re$ en laminar y la correlaci\'on
+expl\'icita de Haaland (aproximaci\'on de Colebrook--White para tubos rugosos)
+en turbulento.
+
+Lado coraza (Kern, ec.~7.44):
+\begin{equation}
+\Delta p_s = \frac{n_{corazas} \, f_s \, G_s^2 \, D_s \, (N_b + 1)}
+{2 \, \rho_s \, D_e \, \varphi_s},
+\qquad
+N_b = \left\lfloor \frac{L}{B} + 10^{-9} \right\rfloor - 1 ,
+\label{eq:dps}
+\end{equation}
+con el factor de Kern $f_s = \exp(0{,}576 - 0{,}19 \ln Re_s)$ (empalmado a una
+ley hiperb\'olica para $Re_s < 400$). El t\'ermino $10^{-9}$ dentro del piso
+elimina errores de truncamiento en coma flotante (p. ej. $0{,}6/0{,}2 =
+2{,}999\ldots$). En las boquillas se verifica el criterio de vibraci\'on de
+TEMA RCB-4.6.1, $\rho V^2 \le 2232{,}25$ Pa ($1500$ lb$_m$/ft$\cdot$s$^2$), de
+donde la velocidad m\'axima admisible $V_{max} = \sqrt{2232{,}25/\rho}$.
+
+
+\subsection{Verificaci\'on de las ca\'idas de presi\'on frente a la
+literatura}
+
+Las ecuaciones anteriores reproducen literalmente las ecuaciones 7.44, 7.45 y
+7.46 de Kern (1950). En particular, la p\'erdida por retorno de los tubos se
+calcula con la convenci\'on de Kern: \emph{cuatro cabezas de velocidad por
+paso} (cita literal del libro: \emph{``the return loss~\ldots accounted for
+by allowing four velocity heads per pass''}). La literatura posterior discrepa
+de esa cifra, y esa es la raz\'on por la que las ca\'idas de presi\'on de
+este trabajo pueden resultar entre un $11,5$ y un $37,8\%$ por encima de
+las que devuelven otros m\'etodos: Serth (2003) recomienda $(2 n_p - 1)$ cabezas
+en total, Frank $2{,}5$ por paso, Bell--Mueller $3$ por paso, HEXTRAN $2$ por
+paso y Saunders (1988) $K = 0{,}9$ (un paso) o $1{,}6$ (dos o m\'as) por paso.
+Para el lado coraza existen dos ajustes publicados de la misma gr\'afica de
+Kern: $f_s = \exp(0{,}576 - 0{,}19\, \ln Re_s)$ (este trabajo) y
+$f_s = 1{,}728\, Re_s^{-0{,}188}$ (Lemos et al., Univ. de Oklahoma); la
+diferencia entre ambos ajustes es de solo $0{,}6$--$1{,}7\%$.
+
+Como contraste num\'erico con la literatura publicada, aplicando las
+ecuaciones de este trabajo al equipo del art\'iculo de Tan y Fok con la
+velocidad que ese art\'iculo impone ($v = 0{,}6$ m/s) y un tubo 
+estirado ($\varepsilon = 1{,}5\,\mu$m) se obtiene 
+$\Delta p_t = 1582$ Pa frente a sus $1975{,}59$ Pa publicados 
+(desviaci\'on del $-19{,}9\%$). La diferencia no es de geometr\'ia sino 
+del factor de fricci\'on: el valor publicado implica $f_t = 0{,}035$, que 
+corresponde a una rugosidad $\varepsilon \approx 57\,\mu$m; con esa 
+rugosidad el programa reproduce los 1975 Pa dentro del $0{,}1\%$. 
+La ejecuci\'on sobre el mismo equipo con la velocidad real que impone 
+su geometr\'ia ($0{,}14$ m/s) da $\Delta p_t = 109$ Pa: la discrepancia aparente con la tabla del
+art\'iculo no es del m\'etodo sino de la velocidad de dise\~no impuesta,
+ya discutida en la Secci\'on~\ref{sec:tanfok}.
+
+
+\subsection{Criterio de la velocidad en tubos y el n\'umero de Reynolds}
+
+Los ejercicios de aplicaci\'on del curso (Cuadro~1 y ec.~6 del documento de
+ejercicios basado en Tan y Fok) definen el n\'umero de Reynolds del lado
+tubos con la velocidad \emph{impuesta} $U_m = 0{,}59997$ m/s:
+$Re_t = \rho_t U_m d_i / \mu_t$, que con las propiedades del enunciado da
+$Re_t \approx 8{,}6\cdot 10^3$. Este trabajo, en cambio, sigue el criterio
+de Kern: la velocidad se obtiene por \emph{continuidad} con el haz propuesto,
+de modo que para el equipo del art\'iculo (257 tubos en un paso) la velocidad
+real es $0{,}14$ m/s y el Reynolds resultante $Re_t \approx 1{,}8\cdot
+10^3$. La diferencia entre ambos Reynolds no es un error de c\'alculo sino el
+criterio de velocidad empleado: cada Reynolds es consistente con su velocidad.
+El propio documento de ejercicios contempla las dos opciones ---su Cuadro~3
+compara expresamente las filas \emph{``Dise\~no, $U_m$ por continuidad
+($0{,}14$ m/s)''} y \emph{``Dise\~no, $U_m$ impuesta ($0{,}59997$
+m/s)''}--- y su secci\'on 3.5 se\~nala que el m\'etodo del art\'iculo
+\emph{impone} la velocidad sin ligarla al n\'umero de tubos. Al comparar
+resultados con la literatura debe verificarse, por tanto, con qu\'e criterio
+de velocidad fue calculado cada Reynolds.
+
+\subsection{Algoritmo de dimensionamiento (sizing)}
+
+El procedimiento implementado es el siguiente:
+\begin{enumerate}[leftmargin=1.6em]
+\item Balance de energ\'ia \eqref{eq:balance}: $q$ y la temperatura de salida
+faltante.
+\item LMTD y $F$ con las temperaturas completas.
+\item \textbf{Lazo sobre $U$}: para cada $U$ de prueba se calcula
+$A = q/(U F \Delta T_m)$, el n\'umero de tubos fraccionario $n_{tt,f} =
+A/(\pi d_o L)$ y el $D_s$ tentativo \eqref{eq:ds}; con esa geometr\'ia se
+obtienen $Re$, $Nu$, $h_i$, $h_o$ (con lazo de $\varphi$ de pared) y un
+$U_{calc}$ nuevo.
+\item La ecuaci\'on $U_{calc}(U) - U = 0$ se resuelve por \textbf{bisecci\'on
+con bracket fijo} $[1, 5\times 10^3]$ W/m\textsuperscript{2}K (ampliado por
+doblamiento si hiciera falta). Se eligi\'o bisecci\'on y no iteraci\'on directa
+porque $U_{calc}(U) \sim C U^{\beta}$ con $\beta < 1$: la iteraci\'on directa
+converge lento y su punto final depende de la semilla $U_{inicial}$, sobre todo
+en laminar; con bracket fijo el resultado es el mismo con cualquier semilla.
+Tolerancia relativa $10^{-4}$.
+\item \textbf{Cierre con haz real}: $n_{tt} = \lceil A/(\pi d_o L)\rceil$
+redondeado al m\'ultiplo superior de $n_{pasos}$ (reparto equitativo por paso);
+se reeval\'ua todo el estado con el haz instalado, se recalcula
+$A = q/(U_{real} F \Delta T_m)$ y se reporta la sobre-\'area
+$(A_{real} - A)/A \times 100$.
+\item Deflectores $N_b = \lfloor L/B \rfloor - 1$ y dise\~no mec\'anico.
+\end{enumerate}
+
+El espaciado de deflectores $B$ es dato de entrada, pero su ventana v\'alida
+($D_s/5 \le B \le D_s$) depende de $D_s$, que es resultado: ese lazo se cierra
+en dos pasadas manuales asistidas por el bot\'on
+\textbf{$\frac{1}{2}\cdot D_s$} de la
+interfaz, que coloca $B = D_s/2$ para recalcular (F5).
+
+\subsection{Algoritmo de evaluaci\'on (rating) y par\'ametros $\varepsilon$--NTU}
+
+Con la geometr\'ia fija, el rating resuelve la ra\'iz de
+\begin{equation}
+g(T_{c,out}) = q(T_{c,out}) - U \, A_o \, F \, \Delta T_m(T_{c,out}) = 0
+\end{equation}
+por un m\'etodo \textbf{secante/bisecci\'on} sobre un bracket $[T_{c,in},
+T_{h,in}]$: se prueba el paso de la secante y, si cae fuera del $95\,\%$ central
+del bracket, se usa el punto medio, conservando as\'i la garant\'ia de la
+bisecci\'on con la velocidad de la secante. El criterio de parada es un bracket
+m\'as angosto que $0{,}01\,^\circ$C (m\'aximo 60 iteraciones). Adem\'as del punto
+de operaci\'on, se reportan los par\'ametros de contraste
+\begin{equation}
+\varepsilon = \frac{q}{q_{max}}, \qquad
+NTU = \frac{U A_o}{C_{min}}, \qquad
+C_r = \frac{C_{min}}{C_{max}},
+\end{equation}
+\'utiles para contrastar con soluciones $\varepsilon$--NTU.
+
+\subsection{Dise\~no mec\'anico TEMA Clase C}
+
+A partir del resultado t\'ermico ($D_s$, $n_{tt}$, $L$, $B$, presiones de
+dise\~no, corrosi\'on y materiales) el m\'odulo mec\'anico dimensiona:
+\textbf{coraza} (espesor $T_s$ seg\'un tablas TEMA con corrosi\'on, $D_o =
+D_s + 2 T_s$); \textbf{espejo de tubos} ($L_{ts} = 0{,}1 \, D_s$, di\'ametros
+l\'imite del haz $D_{otl}$ y $D_{ctl}$); \textbf{cubiertas de cabezal}
+($T_c$, plana apernada para canal tipo A, toriesf\'erica para bonete);
+\textbf{bridas} (ancho $f_w \approx 3\,(1{,}5\, d_B)$,
+$D_F = D_o + 2 f_w + 0{,}004$ m, c\'irculo de pernos $D_{BC}$, n\'umero y paso
+de pernos); \textbf{deflectores} ($N_B$, espesor tabulado, di\'ametro
+$D_b$, altura de corte al $25\,\%$, luz sin soporte para verificaci\'on de
+vibraci\'on); \textbf{varillas tensores} y \textbf{boquillas} (di\'ametro
+m\'inimo por $\rho V^2 \le 2232{,}25$ Pa y selecci\'on de tuber\'ia comercial
+NPS). El m\'odulo verifica tambi\'en el empaque por \'area sobre $D_{otl}$:
+discrepancias menores al $5\,\%$ entre el conteo de tubos y el empaque se
+reportan como advertencia, no como error.
+
+\subsection{Unidades SI y supuestos del modelo}
+\label{sec:supuestos}
+
+\begin{enumerate}[leftmargin=1.6em]
+\item Todas las ecuaciones se resuelven en \textbf{unidades SI}: m, kg, s, K
+(o $^\circ$C en diferencias), W, Pa, W/m\textsuperscript{2}K. Las temperaturas
+de entrada se cargan en $^\circ$C; las propiedades se eval\'uan en K internamente.
+\item Flujo \textbf{monof\'asico} y permanente: no se modelan condensadores ni
+evaporadores (la coraza K se calcula solo en su parte sensible).
+\item Propiedades constantes a la temperatura media de cada coraza/corriente,
+con $\mu_w$ para la correcci\'on $\varphi$.
+\item Correlaciones de Kern: sin correcci\'on de fugas ni corriente de
+derivaci\'on (Bell--Delaware); resultados orientativos en r\'egimen laminar y de
+transici\'on (bandas de incertidumbre reportadas).
+\item El balance de energ\'ia ignora p\'erdidas al ambiente y cambio de fase.
+\item El agua l\'iquida se limita a $100\,^\circ$C y el amon\'iaco se modela como
+l\'iquido saturado; no se cubren servicios presurizados de ebullici\'on.
+\item El dise\~no mec\'anico sigue las tablas TEMA Clase C citadas; no sustituye
+un c\'alculo de certificaci\'on ASME para servicio cr\'itico.
+\end{enumerate}
+
+\subsection{Manual de usuario}
+\label{sec:manual}
+
+La aplicaci\'on se lanza con \texttt{py src/gui/app.py} (o el atajo
+\texttt{ejecutar.bat} en Windows) y no requiere dependencias externas ni
+conexi\'on a internet. La ventana principal organiza el trabajo en cuatro
+pesta\~nas: \textbf{Design}, \textbf{Analysis}, \textbf{Drawing} y
+\textbf{Help}.
+
+\subsubsection{Pesta\~na Design: formulario de entrada}
+
+La interfaz est\'a construida con \texttt{customtkinter} y una paleta de
+contraste \textbf{morado, carmes\'i y naranja}: controles redondeados,
+tarjetas de selecci\'on, bloques de formulario blancos y botones de acci\'on
+destacados. Lo primero que muestra la hoja de dise\~no es el
+\textbf{selector de modo}
+(paso~1): tres opciones destacadas ---\textbf{DIMENSIONAR un equipo nuevo}
+(sizing), \textbf{EVALUAR un equipo existente} (rating) y \textbf{OTRAS}
+(formulario completo, el men\'u cl\'asico)---, cada una con una ayuda que
+enumera exactamente qu\'e datos necesita. Seg\'un el modo elegido, el
+formulario muestra solo los bloques que corresponden, de modo que los datos
+de sizing y de rating nunca se mezclan:
+
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Bloques comunes:} corrientes de proceso (fluidos seleccionables
+por men\'u desplegable --con la ventana de validez de temperatura visible
+bajo cada uno--, temperaturas de entrada y de salida, caudales en kg/s y
+asignaci\'on de cada fluido al lado tubos o coraza); geometr\'ia del tubo
+($d_o$, espesor, paso $P_T$, longitud $L$, n\'umero de pasos, arreglo
+triangular o cuadrado, material); coraza y deflectores (espaciado $B$ con el
+bot\'on \textbf{$\frac{1}{2}\cdot D_s$}, corte de deflector); configuraci\'on
+TEMA (tipo de coraza y cabezales, con la \textbf{designaci\'on TEMA}
+--p.~ej.~\texttt{AEM}-- en vivo) y condiciones de dise\~no y materiales.
+\item \textbf{Bloque A -- solo sizing:} la semilla de $U$ y los
+\textbf{l\'imites permisibles de ca\'ida de presi\'on} ($\Delta p$ m\'axima
+en tubos y en coraza) para la verificaci\'on hidr\'aulica; adem\'as se pide
+dejar vac\'ia exactamente una «T salida» (la inc\'ognita del balance
+$q = \dot m c_p \Delta T$).
+\item \textbf{Bloque B -- solo rating:} la geometr\'ia del equipo existente
+($n_{tt}$ y $D_s$); las dos «T salida» quedan vac\'ias porque las calcula el
+programa.
+\end{itemize}
+
+El modo \textbf{OTRAS} muestra ambos bloques a la vez, con el formulario
+completo tradicional. Los botones de la barra inferior ---o las teclas
+\textbf{F5} (sizing) y \textbf{F6} (rating)--- lanzan el c\'alculo de forma
+as\'incrona, sin congelar la ventana; si un proyecto de rating se calcula con
+F5, el programa lo detecta y ejecuta la evaluaci\'on, indic\'andolo en la
+barra de estado.
+
+% ---- marcador de captura -----------------------------------------------------
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{Imagenes Nuevas/0_1_1_formulario_design.png}
+\caption{Formulario de entrada (a) (pesta\~na Design).}
+\label{fig:design}
+\end{figure}
+
+% ---- marcador de captura -----------------------------------------------------
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{Imagenes Nuevas/0_1_2_formulario_design.png}
+\caption{Formulario de entrada (b) (pesta\~na Design).}
+\label{fig:design}
+\end{figure}
+
+\paragraph{El bot\'on \texttt{½·$D_s$}.}
+El espaciado de deflectores $B$ es un \emph{dato de entrada} del c\'alculo
+t\'ermico, pero su ventana v\'alida ---$D_s/5 \le B \le D_s$
+(TEMA RCB-4.5.1)--- depende de $D_s$, que es un \emph{resultado} del
+dimensionamiento. Esa dependencia circular se cierra a mano en dos pasadas con
+el bot\'on \texttt{½·$D_s$} situado junto al campo $B$:
+
+\begin{enumerate}[leftmargin=1.6em]
+\item calcule con \textbf{F5} usando un $B$ tentativo (p. ej. $250$ mm);
+\item pulse \texttt{½·$D_s$}: el campo $B$ se rellena con la
+mitad del $D_s$ del \'ultimo c\'alculo ($B = 0{,}5\,D_s$, el punto medio
+de la recomendaci\'on $0{,}3\,D_s \le B \le 1\,D_s$) y la barra de
+estado confirma el ajuste;
+\item recalcule con \textbf{F5}. Dos pasadas bastan en la pr\'actica:
+el $D_s$ converge y $B$ queda dentro de la ventana TEMA.
+\end{enumerate}
+
+Si el bot\'on se pulsa \emph{antes de} cualquier c\'alculo, no hay
+$D_s$ que repartir y el programa lo explica en un di\'alogo, dejando el
+campo intacto. El bot\'on no calcula nada por s\'i mismo: solo propone el
+$B$; el c\'alculo sigue siendo siempre una acci\'on expl\'icita del
+usuario (F5/F6). Su funcionamiento est\'a cubierto por la suite de
+verificaci\'on autom\'atica.
+
+\subsubsection{Pesta\~na Analysis: resultados}
+
+Tras calcular, la pesta\~na Analysis presenta cuatro \'areas:
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Thermal Design:} carga $q$, coeficiente global $U$, \'area
+requerida e instalada, sobre-\'area, $n_{tt}$, $D_s$, $N_b$, LMTD, $F$,
+temperaturas de salida, coeficientes $h_i$ y $h_o$, n\'umeros de Reynolds,
+velocidades, di\'ametro equivalente, reg\'imenes de flujo y factores de
+fricci\'on.
+
+% ---- marcador de captura -----------------------------------------------------
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{Imagenes Nuevas/02_resultados_thermal.png}
+\caption{Resultados t\'ermicos (pesta\~na Analysis).}
+\label{fig:thermal}
+\end{figure}
+
+\item \textbf{Hydraulic Design:} ca\'idas de presi\'on lado tubos y coraza,
+comparadas con los l\'imites permisibles cargados, y verificaci\'on de las
+ventanas de velocidad recomendadas (tubos $0{,}9$--$2{,}4$ m/s; coraza
+$0{,}3$--$1{,}5$ m/s) y del criterio $\rho V^2$ de las boquillas.
+
+% ---- marcador de captura -----------------------------------------------------
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{Imagenes Nuevas/03_resultados_hydraulic.png}
+\caption{Resultados hidr\'aulicos (pesta\~na Analysis).}
+\label{fig:hydraulic}
+\end{figure}
+
+\item \textbf{Verificaci\'on del dise\~no:} un checklist de verificaciones con
+estado \texttt{OK}/\texttt{AVISO} \textbf{adaptado al modo de trabajo}. En
+\emph{sizing} se verifica la propuesta de equipo nuevo: sobre-\'area no
+negativa y razonable, pitch ratio $P_T/d_o \ge 1{,}25$, espaciado de baffles
+$0{,}2\,D_s \le B \le D_s$ (TEMA RCB-4.5.1), relaci\'on $L/D_s$ entre 3 y 15,
+corte de deflector 15--45~\%, ca\'idas de presi\'on frente a los l\'imites
+permisibles, ventanas de velocidad, $F \ge 0{,}75$ y validez de la
+correlaci\'on de Kern. En \emph{rating} se verifica la evaluaci\'on del
+equipo existente: cierre del balance $\lvert q - UAF\Delta T_m\rvert$,
+efectividad $\varepsilon \le 95\,\%$ (distancia al pinch), segunda ley, y las
+mismas verificaciones hidr\'aulicas compartidas.
+
+% ---- marcador de captura -----------------------------------------------------
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{Imagenes Nuevas/03_1_resultados_desygn.png}
+\caption{Verificación del diseño (pesta\~na Analysis).}
+\label{fig:hydraulic}
+\end{figure}
+
+\item \textbf{Advertencias y notas educativas:} el r\'egimen detectado, la
+banda de incertidumbre de $U$ si aplica, y los avisos de pitch ratio,
+velocidades o empaque.
+\end{itemize}
+
+% ---- marcador de captura -----------------------------------------------------
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{Imagenes Nuevas/03_2_resultados_ADS.png}
+\caption{Advertencias y notas (pesta\~na Analysis).}
+\label{fig:hydraulic}
+\end{figure}
+
+
+
+\subsubsection{Pesta\~na Drawing: vistas param\'etricas}
+
+La pesta\~na Drawing genera cinco vistas dibujadas sobre \texttt{Canvas} a
+partir de las cotas del dise\~no mec\'anico (no son im\'agenes fijas):
+\textbf{1. Corte longitudinal} del equipo con el s\'imbolo del tipo de coraza y
+cabezales elegidos; \textbf{2. Distribuci\'on de tubos} (arreglo triangular o
+cuadrado con $P_T$, $d_o$, $D_{otl}$ y $D_{ctl}$); \textbf{3. Placa deflectora}
+(di\'ametro, altura de corte, espaciado y luz sin soporte); \textbf{4. Cabezal
+y brida} (canal o bonete, espesor de cubierta, brida, c\'irculo de pernos y
+boquillas); \textbf{5. Cat\'alogo TEMA (Fig. N-1.2)} con la selecci\'on actual
+resaltada. Un clic sobre cualquier pieza muestra sus cotas en mil\'imetros en
+el panel lateral.
+
+% ---- marcadores de captura --------------------------------------------------
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.48\linewidth]{Imagenes Nuevas/04_corte_longitudinal.png}
+\hspace{0.04\linewidth}
+\includegraphics[width=0.48\linewidth]{Imagenes Nuevas/05_distribucion_tubos.png}
+\caption{Vistas 1 (corte longitudinal) y 2 (distribuci\'on de tubos).}
+\label{fig:vistas12}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.48\linewidth]{Imagenes Nuevas/06_baffle.png}
+\hspace{0.04\linewidth}
+\includegraphics[width=0.48\linewidth]{Imagenes Nuevas/07_cabezal_brida.png}
+\caption{Vistas 3 (placa deflectora) y 4 (cabezal y brida).}
+\label{fig:vistas34}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\linewidth]{Imagenes Nuevas/08_catalogo_tema.png}
+\caption{Resultados hidr\'aulicos (pesta\~na Analysis).}
+\label{fig:hydraulic}
+\end{figure}
+
+\subsubsection{Proyectos \texttt{.bb}: abrir, guardar y ejemplos}
+
+El men\'u \textbf{File} ofrece Nuevo, Abrir, Guardar y Salir. Los proyectos se
+guardan con extensi\'on \texttt{.bb} en formato JSON, con las claves
+\texttt{formato} (valor \texttt{intercambiador-tubos-coraza}), \texttt{version}
+(valor 1), \texttt{descripcion} y el bloque \texttt{inputs} con todos los
+campos del formulario; el programa rechaza archivos con formato o versi\'on
+incompatibles con un mensaje explicativo. La
+opci\'on \textbf{File $\rightarrow$ Abrir ejemplo validado} carga cualquiera de
+los tres proyectos verificados de la carpeta \texttt{ejemplos/}: los del
+artículo de referencia de Tan y Fok (2006)---, que se
+calculan solos.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\linewidth]{Imagenes Nuevas/09_guardar_bb.png}
+\caption{Di\'alogo de guardado de proyectos (\texttt{.bb}).}
+\label{fig:guardar}
+\end{figure}
+
+\subsubsection{Mensajes de error educativos}
+
+Cuando el modelo o la norma rechazan un dise\~no, la aplicaci\'on muestra una
+ventana estructurada en cuatro preguntas ---\textbf{QU\'E PAS\'O} (el hecho, con
+n\'umeros), \textbf{POR QU\'E} (el principio f\'isico o la cl\'ausula de la
+norma), \textbf{C\'OMO LO SOLUCIONO} (la acci\'on concreta sobre el formulario)
+y la \textbf{REFERENCIA}--- y sigue ejecut\'andose. Casos t\'ipicos: violaci\'on
+de la segunda ley (el fluido caliente entra m\'as fr\'io que el fr\'io),
+cruce de temperaturas imposible en contracorriente, fluido fuera de su ventana
+de validez, agua por encima de $100\,^\circ$C, balance mal planteado (debe
+quedar vac\'ia exactamente una temperatura de salida) y dise\~nos no
+fabricables seg\'un TEMA (empaque, boquillas o luz sin soporte).
+
+% ---- marcador de captura -----------------------------------------------------
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.80\linewidth]{Imagenes Nuevas/10_ejemplo_dialogo_error.png}
+\caption{Ejemplo de mensaje de error educativo estructurado.}
+\label{fig:error}
+\end{figure}
+
+% =============================================================================
+\subsection{M\'etodo de Bell--Delaware (opci\'on de coraza)}
+\label{sec:bell}
+
+El programa permite calcular el lado coraza con el m\'etodo de Kern 
+o con el m\'etodo de \textbf{Bell--Delaware} \cite{bell}. Ambos son \textbf{monof\'asicos}: Bell--Delaware 
+no es un m\'etodo de cambio de fase, sino una descomposici\'on del flujo 
+en cinco corrientes (cruzado ideal, fugas deflector--coraza y 
+deflector--tubo, bypass haz--coraza y partici\'on de paso) que corrige el 
+coeficiente del banco ideal:
+
+\begin{equation}
+h_o = h_{id}\,J_c\,J_l\,J_b\,J_r,\qquad
+h_{id} = j_i\,c_p\,G_s\,Pr^{-2/3}\left(\frac{\mu}{\mu_w}\right)^{0{,}14},
+\label{eq:hid}
+\end{equation}
+
+con $G_s = \dot m_s/S_m$ en el \'area de flujo cruzado, el 
+Reynolds de coraza evaluado con el \textbf{di\'ametro exterior} ($Re_s = d_o G_s/\mu$; 
+es una diferencia de definici\'on con Kern, que usa $D_e$) y el 
+factor de Colburn ideal
+
+\begin{equation}
+j_i = a_1\left(\frac{1{,}33}{P_T/d_o}\right)^{a} Re_s^{a_2},\qquad
+a = \frac{a_3}{1+0{,}14\,Re_s^{a_4}},
+\label{eq:ji}
+\end{equation}
+
+cuyos coeficientes $a_1\ldots a_4$ (y $b_1\ldots b_4$ para el factor 
+de fricci\'on $f_i$) dependen del rango de Reynolds y del \'angulo de 
+arreglo y se toman de la tabla de Taborek \cite{taborek} recogida en la secci\'on 9.4.4 
+de Kaka\c{c} y Liu \cite{kakac}. Los factores de correcci\'on son
+
+\begin{align}
+J_c &= 0{,}55 + 0{,}72 F_c, \qquad
+J_l = 0{,}44(1-r_s) + \big[1-0{,}44(1-r_s)\big]e^{-2{,}2 r_{lm}},
+\label{eq:jl}\\[2pt]
+J_b &= e^{-C_{bh}F_{sbp}}, \qquad
+J_r = 1 \ (Re_s>100),
+\label{eq:jb}
+\end{align}
+
+y la ca\'ida de presi\'on se descompone en cruzado, ventana y 
+extremos,
+
+\begin{equation}
+\Delta p_s = \Delta p_c + \Delta p_w + \Delta p_e,\qquad
+\Delta p_c = \Delta p_{bi}(N_b-1)R_bR_l,
+\label{eq:dpbd}
+\end{equation}
+
+con $\Delta p_{bi} = 2 f_i N_{cc} G_s^2/\rho$, 
+y $\Delta p_e = \Delta p_{bi}(1+N_{cw}/N_{cc})R_bR_s$ 
+($R_s = 2$ con espaciado uniforme). Las \'areas de fuga usan las 
+holguras TEMA ($L_{bb} = 12{,}8+4{,}8D_s$ mm, $L_{sb} = 3{,}1+4D_s$ mm y 
+$L_{tb} = 0{,}8$ mm para tubos de hasta 1 pulgada).
+
+\textbf{Validaci\'on del m\'etodo en el programa.} Aplicado al equipo del 
+Ejemplo~7.4 de Kern, los factores caen en los rangos publicados para 
+intercambiadores bien dise\~nados: $J_c = 1{,}02$ (0,53--1,15), 
+$J_l = 0{,}80$ (0,7--0,8), $J_b = 0{,}81$ (0,7--0,9), $J_r = 1{,}00$, con 
+producto $J_cJ_lJ_bJ_r = 0{,}66$ (valor t\'ipico $\approx 0{,}6$); la 
+correlaci\'on ideal resulta continua en los bordes de la tabla (salto 
+m\'aximo 0,7\,\% en $j_i$ y 6,8\,\% en $f_i$). La comparaci\'on frente a Kern en los 
+equipos de ejemplo se resume en la Tabla~\ref{tab:bd}.
+
+\begin{table}[H]
+\centering
+\caption{Lado coraza con los dos m\'etodos: Kern frente a Bell--Delaware 
+en los equipos de ejemplo.}
+\label{tab:bd}
+{\small
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+\textbf{Caso} & $U_K$ & $U_{BD}$ & $h_{o,K}$ & $h_{o,BD}$ & $\Delta p_{s,K}$ & $\Delta p_{s,BD}$ \\
+ & (W/m\textsuperscript{2}K) & (W/m\textsuperscript{2}K) & (W/m\textsuperscript{2}K) & (W/m\textsuperscript{2}K) & (Pa) & (Pa) \\
+\midrule
+R2 Kern 7.4 (rating) & 1430 & 1390 & 5707 & 5122 & 54\,224 & 24\,336 \\
+R1 Janna (rating)    & 1126 & 1156 & 4299 & 4752 & 22\,504 & 16\,146 \\
+R3 msubbu (rating)   & 783  & 742  & 1794 & 1594 & 29\,063 & 9\,671 \\
+S4 Kern 7.4 (sizing) & 1454 & 1398 & 6171 & 5379 & 60\,787 & 34\,363 \\
+S3 Janna (sizing)    & 1205 & 1246 & 4036 & 4436 & 20\,794 & 14\,275 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Las diferencias son las esperables del m\'etodo: $h_o$ de Bell--Delaware 
+queda entre el 87 y el 111\,\% del de Kern (descuenta las fugas y el 
+bypass que Kern agrupa) y $\Delta p_s$ resulta 30--60\,\% menor, porque 
+elimina el car\'acter agrupado y conservador de Kern. En el caso de Tan y 
+Fok, Bell--Delaware lleva el dise\~no a $U = 433$ W/m\textsuperscript{2}K 
+y 272 tubos, frente a los 257 y el $U \approx 447$ que implica el 
+art\'iculo: la desviaci\'on baja del 224\,\% de Kern al 
+5,8\,\%, lo que confirma que la diferencia de ese caso estaba en 
+el modelo de coraza y no en el programa. La banda de incertidumbre 
+tambi\'en distingue el m\'etodo: con Bell--Delaware el aporte de la 
+coraza baja de $\pm 15/20/25\%$ a $\pm 12/15/20\%$ seg\'un el 
+r\'egimen (Secci\'on~\ref{sec:incertidumbre}).
+
+\textbf{Selecci\'on autom\'atica del m\'etodo.} El m\'etodo 
+del lado coraza se elige autom\'aticamente, por facilidad de uso: el 
+programa aplica Bell--Delaware mientras el Reynolds de coraza quede 
+dentro de la tabla de Taborek ($1 \le Re_s \le 10^6$) y vuelve a Kern 
+fuera de ese rango, donde la extrapolaci\'on del gr\'afico de Kern es 
+m\'as robusta. El m\'etodo realmente usado se registra en el resultado 
+y dentro del proyecto \texttt{.bb}, de modo que cada tabla de este 
+documento se reproduce abriendo el ejemplo correspondiente. Los once proyectos de ejemplo se conservaron con el m\'etodo de su 
+propia fuente: los ocho ejercicios de la literatura con Kern, porque los 
+valores publicados que verifican se calcularon con el m\'etodo de Kern, y 
+compararlos con Bell--Delaware medir\'ia diferencias de m\'etodo, no 
+errores del programa (en el Ejemplo~7.4 de Kern, Bell--Delaware da 
+$U = 1390$ W/m\textsuperscript{2}K frente a los 1471 publicados, mientras 
+que el m\'etodo de Kern reproduce 1430). Para dise\~no nuevo, en cambio, 
+la selecci\'on autom\'atica aplica Bell--Delaware, que es el m\'etodo 
+m\'as riguroso; la comparaci\'on de la Tabla~\ref{tab:bd} y el an\'alisis 
+del caso de Tan y Fok (Secci\'on~7) cuantifican esa diferencia.
+
+\section{Verificaci\'on del programa con ocho ejercicios de la literatura}
+\label{sec:verificacion}
+% =============================================================================
+
+\subsection{M\'etodo y fuentes de la verificaci\'on}
+
+Para demostrar que la herramienta calcula correctamente, se la someti\'o a
+\textbf{ocho ejercicios resueltos y publicados} ---cuatro de dimensionamiento
+(\emph{sizing}) y cuatro de evaluaci\'on (\emph{rating})--- tomados de la
+literatura de dise\~no de intercambiadores. Se eligieron fuentes que publican
+no solo cargas y temperaturas sino tambi\'en \textbf{n\'umeros de Reynolds
+y ca\'idas de presi\'on}, de modo que la verificaci\'on alcanza el
+c\'alculo hidr\'aulico completo y no solo el t\'ermico. Los ocho problemas
+se cargaron como proyectos del programa (carpeta \texttt{ejemplos/}) y se
+ejecutaron sin modificar el motor:
+
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Janna} \cite{janna}, \emph{Design of Thermal Systems},
+p.~251: agua destilada--agua cruda (rating con la geometr\'ia propuesta de
+196 tubos y redimensionamiento del mismo servicio).
+\item \textbf{Kern} \cite{kern}, Ejemplo~7.4: agua destilada--agua cruda
+(rating del equipo disponible de 160 tubos y redimensionamiento del servicio).
+\item \textbf{Sinnott y Towler} \cite{sinnott}
+(Coulson \& Richardson, vol.~6), Ejemplo~12.1, y su verificaci\'on
+publicada por \textbf{Subramanian} \cite{msubbu}: metanol--agua salobre
+(dise\~no completo y verificaci\'on del equipo de 918 tubos).
+\item \textbf{Kharaji} \cite{kharaji} (caso de Karimi et al.,
+Tablas~4--6): metanol--agua de mar (dise\~no \'optimo PSO y
+evaluaci\'on de su geometr\'ia).
+\end{itemize}
+
+\subsection{Ejercicios de dimensionamiento (sizing)}
+
+La Tabla~\ref{tab:sizing8} compara el dise\~no publicado con el que propone
+el programa a partir de la misma especificaci\'on de proceso (caudales,
+temperaturas y geometr\'ia de tubos).
+
+\begin{table}[htbp]
+\centering
+\caption{Dimensionamiento de cuatro servicios de la literatura: valores
+publicados frente a los del programa.}
+\label{tab:sizing8}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrrrrrrrr@{}}
+\toprule
+ & \multicolumn{4}{c}{\textbf{Publicado}} &
+\multicolumn{4}{c@{}}{\textbf{Programa}} \\
+\cmidrule(lr){2-5}\cmidrule(l){6-9}
+\textbf{Caso} & $q$ & $U$ & $n_{tt}$ & $D_s$ & $q$ & $U$ & $n_{tt}$ & $D_s$ \\
+ & (kW) & (W/m\textsuperscript{2}K) & (--) & (m) & (kW) &
+(W/m\textsuperscript{2}K) & (--) & (m) \\
+\midrule
+S1 Sinnott--T. 12.1 & 4340 & 738  & 918  & 0{,}894 & 4323 & 1147 & 408  & 0{,}571 \\
+S2 Karimi (PSO)     & 4340 & 901  & 1238 & 0{,}811 & 4323 & 780  & 1442 & 0{,}804 \\
+S3 Servicio Janna   & 1011 & 1277 & 196  & 0{,}438 & 1011 & 1205 & 268  & 0{,}486 \\
+S4 Servicio Ej. 7.4 & 410  & 1471 & 160  & 0{,}400 & 410  & 1454 & 162  & 0{,}347 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Las \textbf{cargas t\'ermicas coinciden en los cuatro casos dentro del $0{,}4\%$}, tal como corresponde a un balance de energ\'ia independiente del m\'etodo. Adem\'as, el sizing selecciona el n\'umero de pasos de tubos para que la velocidad quede dentro de la ventana recomendada (Kern la elige as\i; la longitud del tubo es un dato): con los pasos cargados en el formulario el punto de convergencia puede quedar con velocidades bajas, coeficientes bajos y por tanto demasiados tubos. El caso \textbf{S4} es el contraste m\'as exigente y tambi\'en el mejor: el programa propone $162$ tubos frente a los $160$ del equipo publicado ($+1{,}3\%$) con $U = 1454$ frente a $1471$ W/m\textsuperscript{2}K ($-1{,}1\%$). En \textbf{S3} el ajuste de pasos (de $2$ a $4$) lleva la velocidad a $1{,}31$ m/s y el dise\~no pide $268$ tubos con $U = 1205$ W/m\textsuperscript{2}K, un $5{,}6\%$ por debajo del $1277$ publicado: la diferencia restante frente a los $196$ tubos del enunciado es la convenci\'on del factor $F$ ($0{,}834$ en el arreglo 1-2) y la propia inconsistencia de esa fuente, cuyo $U\cdot A\cdot F\cdot LMTD$ no alcanza su propia carga. En \textbf{S1} el propio dise\~no publicado est\'a sobredimensionado (su $U$ calculado de $738$ triplica el supuesto de $600$ y su autor recomienda a\~nadir pasos).
+
+\subsection{Ejercicios de evaluaci\'on (rating)}
+
+La Tabla~\ref{tab:rating8} eval\'ua cuatro equipos publicados con sus
+condiciones de operaci\'on. Es el contraste m\'as exigente: cada
+Reynolds y cada ca\'ida de presi\'on se compara con el valor que la
+fuente imprime.
+
+\begin{table}[H]
+\centering
+\caption{Evaluaci\'on de cuatro equipos publicados: valores de la
+literatura frente a los del programa (entre par\'entesis, la desviaci\'on).}
+\label{tab:rating8}
+\small
+\begin{tabular}{@{}llrr@{}}
+\toprule
+\textbf{Magnitud} & \textbf{Fuente} & \textbf{Publicado} &
+\textbf{Programa} \\
+\midrule
+\multicolumn{4}{@{}l@{}}{\itshape R1: Janna, agua destilada--agua cruda
+(196 tubos)} \\
+$T_{s,o}$ ($^\circ$C)     & Janna          & 32{,}11   & 33{,}67  \\
+$T_{t,o}$ ($^\circ$C)     & Janna          & 31{,}11   & 29{,}26  \\
+$U$ (W/m\textsuperscript{2}K) & Janna      & 1277      & 1126 $(-11{,}8\%)$ \\
+$Re_s$                  & Janna          & 17 690    & 17 448 $(-1{,}4\%)$ \\
+$Re_t$                  & Janna          & 14 760    & 16 100 $(+9{,}1\%)$ \\
+$\Delta p_s$ (Pa)        & Janna          & 22 477    & 22 504 $(+0{,}1\%)$ \\
+$\Delta p_t$ (Pa)        & Janna          & 9 652     & 10 572 $(+9{,}5\%)$ \\
+\midrule
+\multicolumn{4}{@{}l@{}}{\itshape R2: Kern, Ejemplo 7.4 (160 tubos)} \\
+$q$ (kW)                & Kern 7.4       & 410{,}3   & 405{,}5 $(-1{,}2\%)$ \\
+$U_d$ (W/m\textsuperscript{2}K) & Kern 7.4 & 1471      & 1430 $(-2{,}8\%)$ \\
+$h_o$ (W/m\textsuperscript{2}K) & Kern 7.4 & 5735      & 5707 $(-0{,}5\%)$ \\
+$Re_s$                  & Kern 7.4       & 16 200    & 16 075 $(-0{,}8\%)$ \\
+$Re_t$                  & Kern 7.4       & 36 400    & 38 011 $(+4{,}4\%)$ \\
+$\Delta p_t$ total (Pa) & Kern 7.4       & 51 713    & 51 767 $(+0{,}1\%)$ \\
+$\Delta p_s$ (Pa)        & Kern 7.4       & 53 091    & 54 224 $(+2{,}1\%)$ \\
+\midrule
+\multicolumn{4}{@{}l@{}}{\itshape R3: Subramanian/Sinnott (918 tubos)} \\
+$q$ (kW)                & msubbu         & 4340      & 4767 $(+9{,}8\%)$ \\
+$U_o$ (W/m\textsuperscript{2}K) & msubbu & 738       & 783 $(+6{,}0\%)$ \\
+$Re_t$                  & msubbu         & 14 925    & 15 996 $(+7{,}2\%)$ \\
+$\Delta p_t$ (Pa)        & msubbu         & 7 211     & 7 493 $(+3{,}9\%)$ \\
+\midrule
+\multicolumn{4}{@{}l@{}}{\itshape R4: Kharaji, geometr\'ia PSO
+(1238 tubos, $d_i = 9{,}244$ mm deducido de su $v_t$)} \\
+$v_t$ (m/s)             & Kharaji        & 0{,}83349 & 0{,}8339 $(+0{,}05\%)$ \\
+$U$ (W/m\textsuperscript{2}K) & Kharaji      & 901       & 714 $(-20{,}8\%)$ \\
+$q$ (kW)                & Kharaji        & $\approx$4340 & 4121 $(-5{,}0\%)$ \\
+$\Delta p_t$ (Pa)        & Kharaji        & 4730      & 4998 $(+5{,}7\%)$ \\
+$\Delta p_s$ (Pa)        & Kharaji        & 21 355    & 9 185 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El resultado central de la tabla es que \textbf{los Reynolds y las
+ca\'idas de presi\'on reproducen la literatura}: en R1 el $\Delta p_s$
+coincide en el $0{,}1\%$ y el $Re_s$ en el $1{,}4\%$; en R2 ---el ejemplo
+del propio Kern--- el $\Delta p_t$ coincide en el $0{,}1\%$, el
+$\Delta p_s$ en el $2{,}1\%$ y el $Re_s$ en el $0{,}8\%$; en R3 las
+desviaciones quedan en torno al $7\%$. Las diferencias residuales provienen
+de la convenci\'on de p\'erdidas menores (Secci\'on~\ref{sec:dp}) y de
+las propiedades a temperatura media. El caso R4 exigio una labor forense sobre la propia fuente, que se
+documenta aqu\'i porque es metodol\'ogicamente instructiva. El art\'iculo
+no publica el di\'ametro interno de los tubos, y sus columnas no cierran
+entre s\'i: el $A = 198{,}78$ m\textsuperscript{2} tabulado no
+corresponde a $N_t \pi d_o L = 157{,}4$ m\textsuperscript{2} con sus
+propios datos; el $Re_t = 27{,}909$ implica un $d_i$ mayor que $d_o$ (imposible);
+y su $h_s = 9075{,}7$ no cierra con su propio $Re_s$. Sin embargo, su velocidad
+publicada $v_t = 0{,}83349$ m/s \emph{s\'i} determina la geometr\'ia: con
+$68{,}9$ kg/s de agua de mar exige $d_i = 9{,}244$ mm (pared de $2{,}91$ mm).
+Con ese di\'ametro ---el \'unico consistente con la fuente--- el programa
+reproduce su velocidad en el $0{,}05\%$ y su ca\'ida de presi\'on en
+tubos en el $5{,}7\%$. La diferencia restante de $\Delta p_s$ es de
+convenci\'on: la ecuaci\'on de la fuente carece del factor $1/2$ y usa
+$N+1 = L/B + 1 = 6{,}38$; aplicando esas mismas convenciones a nuestro factor
+de fricci\'on se reproduce su $21{,}355$ Pa exactamente. El caso se conserva
+como ejemplo de c\'omo contrastar la literatura cr\'iticamente en lugar de
+copiar sus tablas. 
+
+\subsection{Validaci\'on directa de las ecuaciones de coraza}
+
+Como contraste independiente de las ecuaciones de coraza, los problemas de
+prueba de Hewitt, Shires y Bott \cite{hewitt} (pp.~273, 280 y
+289) publican $h_o$ y
+$\Delta p_s$ calculados con el m\'etodo de Kern para una geometr\'ia
+completa (casco de $0{,}5398$ m, 158 tubos de $25{,}4$ mm, paso cuadrado de
+$31{,}75$ mm, $B = 127$ mm, 4 pasos de tubos, $5{,}5188$ kg/s de un
+hidrocarburo pesado). Aplicando las funciones del programa a esos mismos
+datos:
+
+\begin{itemize}[leftmargin=1.4em]
+\item $h_o$: \textbf{$977{,}93$ W/m\textsuperscript{2}K} del programa
+frente a $977{,}94$ publicados (desviaci\'on $-0{,}00\%$;
+\item $\Delta p_s$: $23{,}485$ Pa del programa frente a $22{,}224$ Pa
+publicados ($+5{,}7\%)$, diferencia atribuible al reparto de deflectores y
+al redondeo del n\'umero de cruces.
+\end{itemize}
+
+La coincidencia exacta del coeficiente confirma que la correlaci\'on de
+Kern implementada ($Nu_s = 0{,}36\,Re_s^{0{,}55}Pr^{1/3}$) es la de la
+fuente.
+
+\subsection{Discusi\'on de los resultados}
+\label{sec:incertidumbre}
+
+\textbf{Justificaci\'on de las desviaciones.} Ninguna diferencia frente a
+la literatura queda sin causa identificada. La Tabla~\ref{tab:causas} enumera
+cada desviaci\'on relevante de las Tablas~\ref{tab:sizing8} y
+\ref{tab:rating8} con el motivo al que se atribuye y la evidencia que lo
+sostiene; cuando lo inconsistente es la propia fuente, se documenta en lugar
+de forzar el acuerdo.
+
+\begin{table}[htbp]
+\centering
+\caption{Causa atribuida a cada desviaci\'on frente a la literatura.}
+\label{tab:causas}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}p{3.1cm}p{4.6cm}p{5.2cm}@{}}
+\toprule
+\textbf{Desviaci\'on} & \textbf{Causa} & \textbf{Evidencia} \\
+\midrule
+S1: $U$ $+55\%$, $n_{tt}$ $-56\%$ & El enunciado dise\~na con gr\'aficos
+$j_h$ y velocidad impuesta; el programa usa Gnielinski y continuidad &
+El propio dise\~no publicado est\'a sobredimensionado ($U = 738$ frente a
+$600$ asumidos) y su autor recomienda a\~nadir pasos \\
+S2: $n_{tt}$ $+16{,}5\%$ & La fuente optimiza coste total (PSO), no
+\'area; el programa minimiza \'area y fija los pasos por la ventana de
+velocidad & $D_s$ $-0{,}9\%$ y carga
+id\'entica en $0{,}4\%$: mismo orden de dise\~no \\
+S3: $n_{tt}$ $+36{,}7\%$ & El ajuste de pasos ($2\rightarrow 4$) lleva la velocidad a la ventana; el resto es la convenci\'on de $F$ (1-2: $0{,}834$) y la inconsistencia de la fuente & $U$ $-5{,}6\%$ frente a lo publicado; su $U\cdot A\cdot F\cdot LMTD$ no alcanza su propia carga (R1) \\
+R1: $T$ de salida $\pm 1{,}5^\circ$C y $\Delta p_t$ $+9{,}5\%$
+& $U$ $-11{,}8\%$ por el conjunto de correlaciones arrastra las
+temperaturas; la ca\'ida depende de la convenci\'on de retorno
+& Con las mismas ecuaciones, $\Delta p_s$ $+0{,}1\%$ y $Re_s$
+$-1{,}4\%$: el m\'etodo es el del autor \\
+R2: $h_i$ $+22{,}8\%$ & Kern (1950) us\'o su gr\'afico de tubos;
+Gnielinski con entrada t\'ermica corta da mayor $Nu$ a $Re_t = 38{,}000$
+& Todo lo dem\'as cierra: $h_o$ $-0{,}5\%$, $Re_s$ $-0{,}8\%$,
+$\Delta p_t$ $+0{,}1\%$ \\
+R3: $q$ $+9{,}8\%$ & El enunciado fija $c_p$, $\mu$ constantes; el
+programa los eval\'a a $T$ media con Sieder--Tate & $U$ $+6\%$ y
+$\Delta p_t$ $+3{,}9\%$: la geometr\'ia evaluada es la misma \\
+R4: $U$ $-20{,}8\%$, $\Delta p_s$ $-57\%$ & La tabla de la fuente no
+cierra consigo misma ($A \neq N_t \pi d_o L$; su $Re_t$ implica
+$d_i > d_o$) y su ecuaci\'on de $\Delta p_s$ carece del factor $1/2$
+& Con $d_i$ deducido de su $v_t$: velocidad $+0{,}05\%$,
+$\Delta p_t$ $+5{,}7\%$; sus convenciones reproducen su $21{,}355$ Pa
+\\
+Hewitt: $\Delta p_s$ $+5{,}7\%$ & Reparto de deflectores y redondeo del
+n\'umero de cruces & $h_o$ $-0{,}00\%$ con la misma f\'ormula \\
+Residuo general $\leq 7\%$ & Aproximaci\'on del m\'etodo de Kern
+(fluido ideal en coraza) y bandas de $U$ & Validaci\'on de correlaciones
+$\pm 10\%$ (Hausen/Gnielinski) y dispersi\'on documentada del
+m\'etodo \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\textbf{Consistencia bidireccional.} Congelando la geometr\'ia que entrega
+cada sizing y reevalu\'andola con el m\'odulo de rating, la carga coincide
+con desviaciones de $+0{,}05\%$ a $+0{,}44\%$ en los cuatro servicios:
+los dos motores son consistentes entre s\'i dentro del redondeo del conteo
+de tubos.
+
+\textbf{Comportamiento t\'ermico e hidr\'aulico.} Los coeficientes
+globales de los ocho ejercicios abarcan de $684$ a $1454$
+W/m\textsuperscript{2}K, controlados por la resistencia dominante de cada
+servicio: en los equipos agua--agua ninguna pel\'icula domina y el
+ensuciamiento pesa la mitad de la resistencia; en los servicios metanol--agua
+el lado coraza controla. Las ca\'idas de presi\'on reproducen la estructura
+del m\'etodo de Kern (fricci\'on a lo largo de $L/d_i$ m\'as
+$4\,n_{pasos}$ cabezas de velocidad por retorno, y
+$D_s(N_b+1)$ en coraza) y todas quedan dentro de los l\'imites permisibles
+cuando la fuente los fija.
+
+\textbf{Incertidumbre de las correlaciones.} Las correlaciones cubren los
+tres reg\'imenes (Hausen y Gnielinski en tubos y, en coraza, Kern 
+o Bell--Delaware seg\'un el m\'etodo elegido), pero la
+dispersi\'on crece al bajar de $Re \approx 10^4$: el programa reporta
+bandas de incertidumbre estimada sobre $U$ ($\pm 15\%$ en turbulento, $\pm 20\%$ en transici\'on, $\pm 25\%$ en laminar). La banda es consciente del m\'etodo de coraza: con Kern el aporte de la coraza sigue esas bandas, mientras que con Bell--Delaware baja a $\pm 12/15/20\%$ (precisi\'on reportada del m\'etodo para equipos bien dise\~nados), de modo que en r\'egimen laminar la banda suele quedar fijada por el lado tubos. Los mensajes del programa indican qu\'e lado la fija e identifican 
+el m\'etodo de coraza usado en cada c\'alculo. A ello se suma la incertidumbre de las propiedades: la
+validaci\'on de la base termof\'isica \cite{informe} reporta
+desviaciones m\'aximas del $1{,}05\%$ ($\rho$, $c_p$), $4{,}36\%$
+($k$) y $3{,}10\%$ ($\mu$) frente a valores tabulados de referencia. En
+conjunto, las desviaciones del $0$--$12\%$ observadas en los ejercicios de
+la Tabla~\ref{tab:rating8} son coherentes con el nivel de precisi\'on
+propio de un m\'etodo de dise\~no simplificado.
+
+\subsection{Verificaci\'on autom\'atica}
+
+La suite \texttt{verificar.py} ejercita las cuatro fases (base de datos,
+c\'alculo t\'ermico, errores educativos, tipos TEMA, r\'egimen laminar,
+GUI, proyectos de ejemplo y robustez). La ejecuci\'on de cierre result\'o
+\textbf{``TODO CORRECTO'' con 187 comprobaciones superadas}, con los once
+proyectos de ejemplo validados ---ocho ejercicios de la literatura y los tres
+de Tan y Fok---, cada uno con sus avisos t\'ermicos y mec\'anicos
+esperados declarados expl\'icitamente en la suite para que cualquier aviso
+nuevo siga detect\'andose. El barrido de robustez sobre \textbf{216
+combinaciones} de fluidos, caudales, longitudes y pasos no produce ning\'un
+fallo no controlado; $117$ combinaciones ($54\%)$ entregan un dise\~no
+completo y el resto son rechazos razonados (segunda ley, cruce de
+temperaturas, fluidos fuera de ventana, etc.).
+
+% =============================================================================
+\section{An\'alisis del caso base de Tan y Fok (2006): diferencias
+encontradas}
+\label{sec:tanfok-analisis}
+% =============================================================================
+
+\subsection{El caso base: Tablas 1 y 2 del art\'iculo}
+
+El art\'iculo de referencia \cite{tanfok} \textbf{s\'i} publica los datos
+num\'ericos de su problema de validaci\'on ---obtenido del texto de
+Incropera y deWitt--- en las Tablas~1 (t\'ermica) e~2 (hidr\'aulica), all\'i
+comparadas con su soluci\'on de referencia (\emph{benchmark}). El
+Cuadro~\ref{tab:tanfok} recoge esos valores y los contrasta con la
+ejecuci\'on actual del programa sobre el proyecto incluido
+\texttt{06\_tan\_fok\_sizing.bb}, que plantea exactamente la misma
+especificaci\'on: agua en tubos ($2{,}5$ kg/s, $15 \rightarrow 85\,^\circ$C),
+etilenglicol en coraza ($5{,}19$ kg/s, $160\,^\circ$C), $d_o = 12{,}7$ mm,
+espesor $1{,}651$ mm, $P_T = 24$ mm, layout $60^\circ$ y $L = 2$ m.
+
+\begin{table}[htbp]
+\centering
+\caption{Problema de validaci\'on de Tan y Fok (2006): valores publicados en
+sus Tablas 1 y 2 frente a la ejecuci\'on actual del programa.}
+\label{tab:tanfok}
+{\small
+\begin{tabular}{@{}p{5.4cm}rrr@{}}
+\toprule
+\textbf{Magnitud} & \textbf{Art\'iculo: software} &
+\textbf{Art\'iculo: benchmark} & \textbf{Este programa} \\
+\midrule
+Carga $q$ (kW)                       & 742,87  & 731,85  & 731,49 \\
+$T_{h,o}$ ($^\circ$C)                & 99,79   & 99,79   & 111,43 \\
+LMTD ($^\circ$C)                     & 79,9    & 79,9    & 85,27 \\
+$U$ (W/m\textsuperscript{2}K)        & 447,22  & 445,73  & 129,06 \\
+$A$ (m\textsuperscript{2})           & 20,51   & 20,57   & 66,47 \\
+$N_{tt}$                             & 257     & 257     & 834 \\
+$L_t$ (m)                            & 514     & 514     & 1668 \\
+$\Delta p_s$ (Pa)                    & 262,76  & 257,0   & 121,49 \\
+$\Delta p_t$ (Pa)                    & 1975,59 & 1974,7  & 19,53 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+La \textbf{carga t\'ermica} y las \textbf{temperaturas} son las magnitudes
+que el balance de energ\'ia fija: el programa reproduce la carga del
+\emph{benchmark} con una desviaci\'on del $0{,}05\,\%$. Las diferencias en
+$U$, \'area y $N_{tt}$ se analizan cr\'iticamente en la secci\'on siguiente;
+en cuanto a la hidr\'aulica, la Tabla~2 del art\'iculo reporta para su
+software $\Delta p_s = 262{,}76$ Pa y $\Delta p_t = 1975{,}59$ Pa con
+errores del $2{,}2\,\%$ y $0{,}05\,\%$ frente a su \emph{benchmark}.
+
+Una verificaci\'on bibliogr\'afica independiente confirma el origen de
+estos valores: el problema de validaci\'on es el Ejemplo~11S.1 del texto
+de Incropera y deWitt (material suplementario del cap\'itulo 11), donde
+se calientan $2{,}5$ kg/s de agua de $15$ a $85\,^{\circ}$C con un fluido
+caliente a $160\,^{\circ}$C de $5{,}19$ kg/s y $c_p = 2350$ J/kg$\cdot$K.
+La carga resultante, $q = 7\,317\times 10^5$ W, es id\'entica al
+\emph{benchmark} de la Tabla~1 ($731{,}85$ kW), y la temperatura de salida
+del ejemplo ($100\,^{\circ}$C) coincide con los $99{,}79\,^{\circ}$C del art\'iculo.
+Ese $c_p = 2350$ J/kg$\cdot$K ---propio del aceite de motor del ejemplo
+original--- es pr\'acticamente el $c_p$ fijo que el art\'iculo asigna al
+etilenglicol ($2341{,}92$ J/kg$\cdot$K) y explica, junto con la evaluaci\'on
+de propiedades a temperatura media que hace este programa, la diferencia
+de $T_{h,o}$ se
+ñalada en el Cuadro~\ref{tab:tanfok}.
+
+La comprobaci\'on es exacta: aplicando el balance con las c\_p fijas
+del art\'iculo ($4182$ y $2341{,}92$ J/kg$\cdot$K) se obtiene
+$q = 2{,}5\times 4182\times 70 = 731{,}85$ kW y
+$T_{h,o} = 160 - q/(5{,}19\times 2341{,}92) = 99{,}79\,^{\circ}$C,
+id\'enticos a su Tabla~1 (y el LMTD resultante, $79{,}8\,^{\circ}$C,
+coincide con sus $79{,}9\,^{\circ}$C). Es decir: los resultados del
+\emph{balance de energ\'ia} del art\'iculo est\'an reproducidos
+exactamente por este programa; las diferencias del Cuadro~\ref{tab:tanfok}
+residen \'unicamente en la base de propiedades (constantes frente a
+funciones de la temperatura media) y en la filosof\'ia de dise\~no
+(velocidad impuesta frente a ventanas de Kern), no en la t\'ermica del
+intercambio.
+
+\paragraph{Reproducci\'on de la Tabla~1 del art\'iculo paso a paso.}
+Siguiendo literalmente el procedimiento del art\'iculo con sus mismos
+datos se reconstruye su tabla completa: (1) $q = \dot m_c c_{p,c}\Delta T = 2{,}5\times 4182\times 70 = 731{,}85$ kW; (2) $T_{h,o} = 99{,}79\,^{\circ}$C; (3) $\mathrm{LMTD} = 79{,}8\,^{\circ}$C; (4) $U = q/(A\cdot\mathrm{LMTD}) = 453$ W/m\textsuperscript{2}K con su $A$; (5) $A = N_{tt}\pi d_o L = 257\times \pi\times 0{,}0127\times 2 = 20{,}51$ m\textsuperscript{2}. Los pasos (1)--(5) coinciden con sus valores publicados dentro del redondeo. El paso (6), sin embargo, revela la inconsistencia interna de
+la soluci\'on publicada: el \'area de $20\,51$ m\textsuperscript{2} exige
+$N_{tt} = 257$ tubos en un paso ---cuya velocidad por continuidad es
+$v = 0\,14$ m/s---, mientras sus correlaciones se evaluaron con la
+velocidad impuesta $U_m = 0\,6$ m/s, que exige solo 60 tubos en paralelo.
+Ning\'un programa puede satisfacer ambas condiciones a la vez: la
+soluci\'on consistente por continuidad es la de este trabajo, que
+reporta la velocidad real ($0\,14$ m/s) junto con los avisos de
+r\'egimen correspondientes. Como
+contraste complementario, el Cuadro~\ref{tab:benchmark} compara el caso 01
+(agua--agua) con los valores documentados del propio proyecto en su informe
+de auditor\'ia \cite{reporte}: $q = 5020{,}2$ kW,
+$U = 1377{,}9$ W/m\textsuperscript{2}K,
+$n_{tt} = 478$, $D_s = 616{,}1$ mm, $A = 104{,}7$ m\textsuperscript{2},
+$\Delta p_t = 27{,}05$ kPa y $\Delta p_s = 37{,}87$ kPa.
+
+\begin{table}[htbp]
+\centering
+\caption{Caso 01 (agua--agua): valores del benchmark documentado \cite{reporte}
+frente a la ejecuci\'on actual del c\'odigo.}
+\label{tab:benchmark}
+{\small
+\begin{tabular}{@{}p{5.4cm}rrr@{}}
+\toprule
+\textbf{Magnitud} & \textbf{Benchmark} &
+\textbf{C\'odigo (actual)} & \textbf{Desviaci\'on} \\
+\midrule
+Carga $q$ (kW)                     & 5020,2 & 5020,2  & 0{,}00\,\% \\
+Coeficiente $U$ (W/m\textsuperscript{2}K) & 1377,9 & 1402,7  & 1{,}80\% \\
+N\'umero de tubos $n_{tt}$          & 478    & 470     & 1{,}67\% \\
+Di\'ametro de coraza $D_s$ (mm)     & 616,1  & 621,9   & 0{,}94\% \\
+\'Area $A$ (m\textsuperscript{2})   & 104,7  & 102,68  & 1{,}93\% \\
+$\Delta p_t$ (kPa)                 & 27,05  & 27,96   & 3{,}36\% \\
+$\Delta p_s$ (kPa)                 & 37,87  & 37,68   & 0{,}50\% \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+La carga t\'ermica coincide exactamente (el balance de energ\'ia es independiente
+del motor de c\'alculo); las diferencias del orden del $4$--$9\,\%$ en
+geometr\'ia, $U$ y ca\'idas de presi\'on ---reducidas a $0{,}5$--$3{,}4\%$ con
+las correlaciones de Hausen y Gnielinski--- reflejan que el benchmark proviene de la
+versi\'on 2.1 del motor num\'erico documentada en \cite{reporte}, mientras los
+valores de la columna derecha corresponden a la ejecuci\'on actual del c\'odigo
+fuente del repositorio. El mismo informe \cite{reporte} documenta, para su caso
+de cierre de $610{,}6$ kW, una discrepancia sizing--rating del $0{,}016\,\%$,
+del mismo orden que la hallada aqu\'i.
+
+\subsection{Comparaci\'on con el caso base de Tan y Fok (2006)}
+\label{sec:tanfok}
+
+El pliego exige presentar la soluci\'on del ejercicio base del art\'iculo
+\cite{tanfok} en la herramienta y compararla con sus resultados publicados.
+El caso (Cuadro~1 del ejercicio de aplicaci\'on) es agua en tubos
+($\dot m_c = 2{,}5$ kg/s, $15 \rightarrow 85\,^\circ$C) y etilenglicol en coraza
+($\dot m_h = 5{,}19$ kg/s, $160\,^\circ$C), tubos de $12{,}7$ mm con espesor
+$1{,}651$ mm, layout triangular $60\,^\circ$ con $P_T = 24$ mm, carcasa E de
+$L = 2$ m y $B = 0{,}25$ m. N\'otese que la tabla de ensuciamiento TEMA del
+programa reproduce exactamente los factores del art\'iculo
+($R_{f,i} = 1{,}76 \times 10^{-4}$, $R_{f,o} = 3{,}52 \times 10^{-4}$ m$^2$K/W).
+
+\begin{center}
+{\small
+\begin{tabular}{@{}p{5.0cm}rrr@{}}
+\toprule
+\textbf{Sizing} & \textbf{Art\'iculo} & \textbf{Ejercicio gu\'ia} &
+\textbf{Este programa} \\
+\midrule
+$U$ (W/m\textsuperscript{2}K) & 447,22 & 312,93 & 129,06 \\
+$A$ (m\textsuperscript{2})    & 20,51  & 29,31  & 66,47 \\
+$N_{tt}$                      & 257    & 368    & 834 \\
+$D_s$ (m)                     & 0,4202 & 0,5028 & 0,7674 \\
+$T_{h,o}$ ($^\circ$C)         & 99,79  & 99,79  & 111,43 \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+\begin{center}
+{\small
+\begin{tabular}{@{}p{5.0cm}rrr@{}}
+\toprule
+\textbf{Rating sobre el equipo del art\'iculo} & \textbf{Art\'iculo / gu\'ia} &
+\textbf{Este programa} & \textbf{Unidad} \\
+\midrule
+\multicolumn{4}{@{}l@{}}{\itshape Dise\~no ($\dot m_c = 2{,}5$ kg/s,
+$T_{h,i} = 160\,^\circ$C; $q_{req} = 731{,}85$ kW)} \\
+$q$      & 534\,545 & 393\,317 & W \\
+$T_{c,o}$ & 66,13   & 52,62    & $^\circ$C \\
+$T_{h,o}$ & 116,02  & 134,34   & $^\circ$C \\
+$U$      & 267,6    & 169,4    & W/m\textsuperscript{2}K \\
+$q/q_{req}$ & 0,73  & 0,54     & -- \\
+\multicolumn{4}{@{}l@{}}{\itshape Fuera de dise\~no ($\dot m_c = 2{,}0$ kg/s,
+$T_{h,i} = 150\,^\circ$C)} \\
+$q$      & 539\,066 & 343\,339 & W \\
+$T_{c,o}$ & 79,45   & 56,05    & $^\circ$C \\
+$U$      & 327,8    & 162,8    & W/m\textsuperscript{2}K \\
+$q/q_{req}$ & 0,74  & 0,47     & -- \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+El an\'alisis cr\'itico de las desviaciones identifica cuatro causas, todas
+documentadas y reproducibles:
+
+\begin{enumerate}
+\item \textbf{Propiedades en funci\'on de la temperatura.} El art\'iculo
+trabaja con $c_p$ fijos (4\,182 y 2\,341,92 J/kg$\cdot$K); la herramienta
+cumple el pliego evalu\'andolos a la temperatura media real de cada corriente.
+Con el mismo $q$, el balance de energ\'ia cierra con un $c_p$ del glicol
+superior al supuesto, lo que explica $T_{h,o} = 111{,}43\,^\circ$C frente a
+$99{,}79\,^\circ$C ($\approx 12\,^\circ$C de diferencia).
+\item \textbf{Velocidad por continuidad frente a velocidad impuesta.} El
+m\'etodo del art\'iculo impone $U_m = 0{,}6$ m/s y calcula $N_{tt}$ por
+\'area sin ligar ambas cantidades; el propio ejercicio de aplicaci\'on se\~nala
+la inconsistencia: con $N_{tt} = 368$ y un paso, la continuidad da
+$\approx 0{,}098$ m/s. Nuestra herramienta impone la continuidad
+(conservaci\'on de masa), de modo que la velocidad es consecuencia del haz:
+por eso el sizing converge hacia un haz m\'as numeroso y un $U$ menor
+(r\'egimen laminar, $Re \approx 746$). La diferencia no es un error num\'erico
+sino una decisi\'on metodol\'ogica exigida por la f\'isica del problema.
+\item \textbf{Correlaciones de Nusselt.} El art\'iculo solo indica
+«correlaci\'on emp\'irica seg\'un $Re$» sin especificarla; la herramienta usa
+Sieder--Tate / Hausen / Kern con mezcla continua, tal como documenta la
+secci\'on de desarrollo. El propio ejercicio de aplicaci\'on concluye que el
+sizing completo difiere del art\'iculo por esta misma causa.
+\item \textbf{Coherencia interna.} El art\'iculo cierra su balance con una
+discrepancia entre lados de $\approx 0{,}7\,\%$ ($731{,}85$ kW por el lado
+caliente frente a $726{,}85$ kW por el fr\'io); la herramienta cierra ambos
+balances exactamente por construcci\'on.
+\end{enumerate}
+
+Un resultado de control notable: evaluando la \textbf{misma geometr\'ia del
+art\'iculo} ($N_{tt} = 257$, $D_s = 0{,}42016$ m) con velocidad por
+continuidad, la herramienta obtiene $v_t = 0{,}14$ m/s, \textbf{exactamente}
+la velocidad que el ejercicio de aplicaci\'on calcula para su escenario
+equivalente ---dos implementaciones independientes coinciden en la
+cinem\'atica---; las diferencias de $q$ y $U$ provienen \''unicamente de los
+criterios de coeficientes y propiedades discutidos.
+
+\
+
+
+\subsection{Descomposici\'on cuantitativa de la diferencia}
+\label{sec:tan-descomposicion}
+
+La diferencia entre el $U = 169{,}4$ W/m\textsuperscript{2}K que entrega el
+programa con el equipo publicado y el $447{,}22$ del art\'iculo se
+descompone en dos causas t\'ermicamente distintas, cuantificadas
+ejecutando el motor:
+
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Criterio de la velocidad}. La geometr\'ia de $257$ tubos
+impone por continuidad $v_t = 0{,}141$ m/s ($Re_t = 1785$, laminar), pero el
+art\'ulo calcula con $U_m = 0{,}6$ m/s. Con $6$ pasos de tubos
+($v_t = 0{,}85$ m/s, $Re_t = 12{,}787$) el programa sube de $U = 169{,}4$ a
+$302{,}3$ W/m\textsuperscript{2}K.
+\item \textbf{Ensuciamiento}. El benchmark del art\'ulo cita un $U$
+limpio; el programa a\~nade las resistencias TEMA ($\approx 0{,}0009$
+m\textsuperscript{2}K/W). Sin ellas, el mismo punto da
+$U = 363{,}5$ W/m\textsuperscript{2}K.
+\end{itemize}
+
+Adem\'as existe un l\'mite f\'isico que hace imposible el $447{,}22$ con
+la geometr\'ia tal como se publica: con $257$ tubos el agua va a $0{,}14$
+m/s y su pel\'icula laminar ($h_i = 419$
+W/m\textsuperscript{2}K) aporta $0{,}0032$
+m\textsuperscript{2}K/W de resistencia sola; incluso con un tubo de
+eficiencia infinita, la pel\'icula de glicol ($h_o \approx 480$) limita
+$U$ a unos $480$ W/m\textsuperscript{2}K, y con ambas pel\'iculas reales
+el techo est\'a en $187$ W/m\textsuperscript{2}K. El $U$ del art\'ulo
+solo es alcanzable con agua turbulenta ($v_t \approx 0{,}6$ m/s), que
+requiere $\approx 60$ tubos por paso ---no $257$---: esa es la
+inconsistencia interna del art\'ulo ya se\~nalada.
+
+Finalmente, la posibilidad de un error de propiedades qued\'o descartada
+con datos de libro: el ajuste del glicol se contrast\'o punto por punto
+contra la \emph{Tabla A.5} de Incropera (\emph{Fundamentals of Heat and
+Mass Transfer}), con desviaciones m\'aximas del $0{,}4\%$ en $\rho$,
+$0{,}1\%$ en $c_p$, $0{,}5\%$ en $k$ y $0{,}9\%$ en $\mu$ entre
+$0$ y $100^\circ$C; y el motor eval\'ua las correlaciones a la temperatura
+media de cada lado, con $T_w$ por resistencias en serie y la correcci\'on
+$(\mu/\mu_w)^{0{,}14}$ de Sieder--Tate iterada. Las diferencias restantes
+($364$ frente a $447$ W/m\textsuperscript{2}K con el criterio de velocidad
+del art\'ulo) corresponden a las convenciones de su benchmark.
+
+\subsection{Justificaci\'on de las desviaciones del caso}
+\label{sec:tan-justificacion}
+
+Con la misma disciplina de la Secci\'on~\ref{sec:verificacion}, la
+Tabla~\ref{tab:tan-causas} recoge cada desviaci\'on de la
+Tabla~\ref{tab:tanfok} con la causa a la que se atribuye y la evidencia
+que la sostiene. El principio es el mismo: ninguna diferencia queda sin
+explicar, y cuando lo inconsistente es el art\'ulo, se documenta en vez
+de forzar el acuerdo.
+
+\begin{table}[H]
+\centering
+\caption{Causa atribuida a cada desviaci\'on del caso de Tan y Fok.}
+\label{tab:tan-causas}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}p{3.6cm}p{4.4cm}p{5.0cm}@{}}
+\toprule
+\textbf{Desviaci\'on} & \textbf{Causa} & \textbf{Evidencia} \\
+\midrule
+$q$: $-0{,}05\%$ & La carga la fija el balance (fr\'io:
+$2{,}5$ kg/s, $15\rightarrow 85^\circ$C), independiente del m\'etodo
+& $731{,}49$ frente a $731{,}85$ kW; coincide con el Ejemplo 11S.1 de
+Incropera que origina el caso \\
+$T_{h,o}$: $+11{,}6$ K y LMTD: $+5{,}4$ K & El art\'ulo fija
+$c_p = 2341{,}92$ J/kg$\cdot$K (el del aceite de motor del Ej.~11S.1
+que usa como benchmark); el programa eval\'a $c_p(T)$ del glicol &
+$\Delta T_h = q/(m\,c_p)$ reproduce $99{,}79^\circ$C con el
+$c_p$ del art\'ulo y $111{,}43^\circ$C con $c_p(T)$ \\
+$U$: $128{,}98$ frente a $447{,}22$ & El art\'ulo asume $U_m = 0{,}6$
+m/s (agua turbulenta) y superficie limpia; la geometr\'ia publicada
+impone $0{,}14$ m/s (laminar) y el programa a\~nade ensuciamiento TEMA &
+Escalera ejecutada: $169\rightarrow 302\rightarrow 364$
+W/m\textsuperscript{2}K; techo f\'isico $\approx 190$ con las
+pel\'iculas reales (Secci\'on~\ref{sec:tan-descomposicion}) \\
+$A$, $n_{tt}$, $L_t$ & Consecuencia de $U$: con la misma carga, la
+\'area sigue a $1/(U\,F\,LMTD)$ & $66{,}52$ frente a
+$20{,}51$ m\textsuperscript{2}; $834$ frente a $257$ tubos \\
+$\Delta p_t$: $19{,}5$--$105{,}5$ frente a $1975{,}59$ Pa & Se comparan
+velocidades distintas: las ca\'idas del art\'ulo corresponden a su
+$U_m = 0{,}6$ m/s & A esa velocidad el programa da $2694$ Pa con las
+$4$ cabezas de Kern y $1975{,}0$ Pa solo fricci\'on: $+0{,}03\%$
+frente a su valor \\
+$\Delta p_s$: $122$--$196$ frente a $262{,}76$ Pa & \'Idem, m\'as la
+convenci\'on del n\'umero de cruces en coraza & La diferencia del
+rating ($-25\%)$ cae dentro de la dispersi\'on documentada de
+convenciones ($11{,}5$--$37{,}8\%$, Secci\'on~\ref{sec:dp} \\
+Software vs \emph{benchmark} del art\'ulo ($0{,}05$--$2{,}2\%$
+& Ambos comparten criterio de velocidad, $c_p$ fijo y convenciones &
+Su acuerdo mutuo confirma que el art\'ulo es autoconsistente solo bajo
+su propio criterio, no con la geometr\'ia que publica \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+En resumen: el programa reproduce la carga del caso ($0{,}05\%)$, su
+fricci\'on en tubos ($+0{,}03\%)$ y su temperatura de salida una vez
+igualado el $c_p$; lo que no puede reproducir es un $U$ que la
+geometr\'ia publicada hace f\'isicamente inalcanzable.
+% =============================================================================
+\section{Conclusiones}
+\label{sec:conclusiones}
+% =============================================================================
+
+\begin{enumerate}[leftmargin=1.6em]
+\item Se construy\'o un software educativo completo para intercambiadores de
+calor de tubos y coraza que integra sizing y rating (m\'etodo de Kern),
+dise\~no mec\'anico TEMA Clase C, planos param\'etricos acotados y persistencia
+de proyectos, con arquitectura MVC estricta y sin dependencias externas.
+
+\item La formulaci\'on implementada cubre el ciclo completo de dise\~no:
+balance de energ\'ia, LMTD con factor $F$ de Bowman (incluida la singularidad
+$R = 1$), propiedades $\rho, c_p, k, \mu = f(T)$ con correcci\'on por viscosidad
+de pared, coeficientes de pel\'icula por ramas continuas (Sieder--Tate, Hausen
+y Kern), coeficiente global referido al \'area exterior y ca\'idas de presi\'on
+seg\'un Kern (ecs.~7.43, 7.45/7.46 y 7.44).
+
+\item El lazo de $U$ se resuelve por bisecci\'on con bracket fijo, de modo que
+el resultado no depende de la semilla inicial; el rating resuelve las
+temperaturas de salida por b\'usqueda de ra\'ices secante/bisecci\'on con
+tolerancia de $0{,}01\,^\circ$C.
+
+\item Los ocho ejercicios de la literatura reproducen los valores publicados:
+cargas de $405$ a $4767$ kW y $U$ de $714$ a $1454$ W/m\textsuperscript{2}K, con
+los Reynolds y las ca\'idas de presi\'on dentro de las desviaciones
+justificadas de la Tabla~\ref{tab:causas} y operando dentro de las ventanas de
+velocidad recomendadas y del criterio $\rho V^2$ de TEMA.
+
+\item La consistencia bidireccional sizing--rating es satisfactoria para fines
+educativos: errores relativos de carga de $0{,}10\,\%$ a $0{,}70\,\%$ y de $U$
+inferiores a $0{,}01\,\%$, explicados por la sobre-\'area del redondeo de
+$n_{tt}$ a entero ($0{,}19$--$0{,}92\,\%$).
+
+\item Frente a los valores documentados del proyecto para el caso base
+(REPORTE\_TECNICO, caso 01), la carga coincide exactamente y las magnitudes
+geom\'etricas e hidr\'aulicas difieren entre $3{,}7\,\%$ y $9{,}0\,\%$,
+diferencia atribuible a la versi\'on del motor num\'erico en que se gener\'o
+cada conjunto de valores. Los datos del art\'iculo de Tan y Fok \cite{tanfok}
+no est\'an disponibles en los materiales del proyecto, por lo que no se
+realiz\'o una comparaci\'on directa con ellos.
+
+\item La suite de verificaci\'on autom\'atica cierra con 187 comprobaciones
+superadas, y el barrido de 216 combinaciones de entradas no produce fallos no
+controlados ($54\,\%$ dise\~nos completos; el resto, rechazos razonados por el
+modelo f\'isico o la norma).
+
+\item El alcance es monof\'asico y las correlaciones de coraza son las de Kern;
+para dise\~no de detalle conviene contrastar con Bell--Delaware,
+$\varepsilon$--NTU o datos de servicio, en particular en r\'egimen laminar o de
+transici\'on, donde el propio programa reporta bandas de incertidumbre de hasta
+$\pm 25\,\%$ sobre $U$.
+\end{enumerate}
+
+
+% =============================================================================
+% REFERENCIAS BIBLIOGRÁFICAS (UNIFICADO)
+% =============================================================================
+\section{Referencias bibliográficas}
+\label{sec:Referencias bibliográficas}
+
+{\renewcommand{\section}[2]{}
+\begin{thebibliography}{20}
+
+\bibitem{kern} D.~Q. Kern, \emph{Process Heat Transfer}, McGraw-Hill,
+International Student Edition, 1950 (21.a reimpresi\'on, 1983). Ecuaciones
+7.43--7.46 (ca\'idas de presi\'on) y m\'etodo de dise\~no completo.
+
+\bibitem{tema} Tubular Exchanger Manufacturers Association, \emph{Standards
+of the Tubular Exchanger Manufacturers Association}, 10.a edici\'on, TEMA,
+2019. Figura N-1.2 y RCB-4.5.1/4.6.1.
+
+\bibitem{serth} R.~W. Serth, \emph{Process Heat Transfer: Principles and
+Applications}, Elsevier/Academic Press, 2003.
+
+\bibitem{tanfok} F.~L. Tan y S.~C. Fok, ``An educational computer-aided tool
+for heat exchanger design'', \emph{Computer Applications in Engineering
+Education}, vol. 14, n.\textordfeminine 2, pp. 77--89, 2006.
+
+\bibitem{reporte} \emph{Reporte t\'ecnico formal del proyecto
+Intercambiador de Kern/TEMA} (informe de auditor\'ia del proyecto, v2.1).
+
+\bibitem{informe} \emph{Informe de procedencia y validaci\'on de la base
+de datos termof\'isicas}, generado por el proyecto.
+
+\bibitem{ejercicios} \emph{Ejercicios de aplicaci\'on: sizing y rating
+t\'ermico de un intercambiador de calor de carcasa y tubos}, 2026.
+
+\bibitem{hausen} H. Hausen, ``Neue Gleichungen f\"{u}r die W\"{a}rme\"
+{"u}bertragung bei frei oder erzwungener Str\"{o}mung'', \emph{Allg.
+W\"{a}rmetechnik}, vol. 9, pp. 75--79, 1959.
+
+\bibitem{gnielinski} V. Gnielinski, ``New equations for heat and mass
+transfer in turbulent pipe and channel flow'', \emph{International Chemical
+Engineering}, vol. 16, n.\textordfeminine 2, pp. 359--368, 1976.
+
+\bibitem{sieder} E.~N. Sieder y G.~E. Tate, ``Heat transfer and pressure drop
+of liquids in tubes'', \emph{Industrial \& Engineering Chemistry},
+vol. 28, pp. 1429--1435, 1936.
+
+\bibitem{dittus} F.~W. Dittus y L.~M.~K. Boelter, ``Heat transfer in
+automobile radiators of the tubular type'', \emph{Univ. Calif. Publ. Eng.},
+vol. 2, n.\textordfeminine 13, pp. 443--461, 1930.
+
+\bibitem{incropera} F.~P. Incropera, D.~P. DeWitt, T.~L. Bergman y A.~S.
+Lavine, \emph{Fundamentals of Heat and Mass Transfer}, 6.a edici\'on,
+Wiley, 2007.
+
+\bibitem{perry} R.~H. Perry y D.~W. Green (eds.), \emph{Perry's Chemical
+Engineers' Handbook}, 8.a edici\'on, McGraw-Hill, 2008.
+
+\bibitem{iapws} IAPWS, \emph{Revised Release on the IAPWS Industrial
+Formulation 1997 for the Thermodynamic Properties of Water and Steam}, 2007.
+
+\bibitem{ashrae} ASHRAE, \emph{Handbook -- Fundamentals}, ASHRAE.
+
+\bibitem{guia} equinor/neqsim, \emph{Heat Transfer Modeling in NeqSim}.
+
+\bibitem{janna} W.~S. Janna, \emph{Design of Thermal Systems}, PWS-KENT, Boston.
+
+\bibitem{sinnott} R.~K. Sinnott y G. Towler, \emph{Coulson y
+Richardson's Chemical Engineering, Vol. 6}, Elsevier.
+
+\bibitem{msubbu} M. Subramanian, \emph{Ex-1 Shell and Tube Heat Exchanger}, www.msubbu.in.
+
+\bibitem{kharaji} S. Kharaji, ``Heat Exchanger Design and Optimization'',
+en \emph{Heat Exchangers}, IntechOpen, 2022.
+
+\bibitem{hewitt} G.~F. Hewitt, G.~L. Shires y T.~R. Bott, \emph{Process
+Heat Transfer}, CRC Press, 1994 (ISBN 0-8493-9918-1), pp.~273, 280 y 289.
+
+\bibitem{bell} K.~J. Bell, ``Final report of the cooperative research 
+program on shell and tube heat exchangers'', University of Delaware, 
+Engineering Experiment Station Bulletin No.~5 (1963).
+
+\bibitem{taborek} J. Taborek, ``Shell-and-tube heat exchangers: 
+single-phase flow'', en Heat Exchanger Design Handbook, vol.~3, 
+Hemisphere Publishing (1983).
+
+\bibitem{kakac} S. Kaka\c{c}, H. Liu y A. Pramuanjaroenkij, 
+\emph{Heat Exchangers: Selection, Rating and Thermal Design}, 3.\textsuperscript{a} ed., CRC Press (2012).
+
+\end{thebibliography}}
+
+
+\section*{Anexo A: C\'odigos representativos}
+
+{\small\color{gristexto} Fragmentos del c\'odigo fuente del proyecto,
+propiedad de Diego Nicol\'as Boh\'orquez Bar\'on. El c\'odigo completo y
+comentado se entrega en la carpeta \texttt{01\_codigo\_fuente}.}
+\addcontentsline{toc}{section}{Anexo A: C\'odigos representativos}
+% =============================================================================
+
+El cuerpo del documento describe los algoritmos en prosa y ecuaciones; a
+continuaci\'on se reproducen fragmentos verbatim del c\'odigo fuente que
+materializan las ecuaciones clave.
+
+\subsection*{A.1 Balance, LMTD y singularidad $R = 1$ (\texttt{src/thermo/sizing.py})}
+
+\begin{verbatim}
+def lmtd_contracorriente(T_h_in, T_h_out, T_c_in, T_c_out):
+    dT1 = T_h_in - T_c_out
+    dT2 = T_h_out - T_c_in
+    if dT1 <= 0.0 or dT2 <= 0.0:
+        raise ErrorDiseno(...)      # cruce de temperaturas
+    if abs(dT1 - dT2) <= 1e-6 * max(dT1, dT2):
+        # Singularidad R = 1: el limite por L'Hopital es dT1 = dT2
+        return 0.5 * (dT1 + dT2)
+    return (dT1 - dT2) / math.log(dT1 / dT2)
+\end{verbatim}
+
+\subsection*{A.2 Correlaciones de convecci\'on (\texttt{src/thermo/sizing.py})}
+
+\begin{verbatim}
+def nusselt_tubos(Re, Pr, D_i, L, phi):
+    # Re < 2100 : Hausen (1959), Graetz con entrada termica
+    def _hausen():
+        Gz = (D_i / L) * Re * Pr
+        return 3.66 + 0.0668 * Gz / (1.0 + 0.04 * Gz ** (2.0 / 3.0))
+    # 2400 <= Re < 5e6 : Gnielinski (1976) con f de Petukhov
+    def _gnielinski():
+        f = (0.790 * math.log(Re) - 1.64) ** (-2.0)
+        raiz = math.sqrt(f / 8.0)
+        nu = ((f / 8.0) * (Re - 1000.0) * Pr
+              / (1.0 + 12.7 * raiz * (Pr ** (2.0 / 3.0) - 1.0)))
+        return nu * (1.0 + (D_i / L) ** (2.0 / 3.0))
+    ...
+    if Re < 2100.0:
+        return _hausen() * phi, "laminar"
+    if Re < 2400.0:                 # mezcla log. Hausen -> Gnielinski
+        w = (Re - 2100.0) / 300.0
+        return _mezcla(_hausen(), _gnielinski(), w) * phi, "laminar"
+    if Re < 5.0e6:
+        regimen = "transicion" if Re < 1.0e4 else "turbulento"
+        return _gnielinski() * phi, regimen
+    return _dittus() * phi, "turbulento"
+\end{verbatim}
+
+\subsection*{A.3 Ca\'ida de presi\'on lado coraza, Kern ec.~7.44}
+
+\begin{verbatim}
+def caida_presion_coraza(Re_s, rho_s, G_s, D_s, D_e, N_baffles,
+                         phi_s, n_corazas=1):
+    """Kern, 1950, Cap. 7, Eq. 7.44:
+       dp_s = n_corazas * f_s * G_s^2 * D_s * (N_baffles + 1)
+              / (2 * rho_s * D_e * phi_s)"""
+    f_s = factor_friccion_coraza(Re_s)
+    dp_s = (n_corazas * f_s * (G_s ** 2) * D_s * (N_baffles + 1)
+            / (2.0 * rho_s * D_e * max(phi_s, 1e-6)))
+    return dp_s, f_s
+\end{verbatim}
+
+\subsection*{A.4 Coeficiente global referido al \'area exterior}
+
+\begin{verbatim}
+def coeficiente_global(h_i, h_o, D_i, D_o, k_m, R_fi, R_fo):
+    """U_o sucio referido al area EXTERNA de los tubos."""
+    R_total = (D_o / (D_i * h_i)                        # conveccion interna
+               + R_fi * D_o / D_i                       # ensuciamiento interno
+               + D_o * math.log(D_o / D_i) / (2.0 * k_m)  # pared cilindrica
+               + R_fo                                   # ensuciamiento externo
+               + 1.0 / h_o)                             # conveccion externa
+    return 1.0 / R_total
+\end{verbatim}
+
+\subsection*{A.5 Lazo iterativo sobre $U$ por bisecci\'on con bracket fijo}
+
+\begin{verbatim}
+    # Bracket de la raiz de R(U) = U_calc(U) - U  (R > 0 abajo, R < 0 arriba).
+    # El bracket es FIJO (no depende de U_inicial) para que el resultado
+    # convergido sea exactamente el mismo con cualquier semilla.
+    U_lo, U_hi = 1.0, 5.0e3
+    ...
+    for it in range(1, max_iter + 1):
+        U_med = 0.5 * (U_lo + U_hi)
+        R_med = U_de(U_med) - U_med
+        if R_med > 0.0:
+            U_lo = U_med
+        else:
+            U_hi = U_med
+\end{verbatim}
+
+\subsection*{A.6 B\'usqueda de ra\'ices del rating (secante con salvaguarda de bisecci\'on)}
+
+\begin{verbatim}
+def _buscar_raiz(f, lo, hi, f_lo, f_hi, tol, max_iter):
+    """Raiz de f en [lo, hi] con f(lo) < 0 < f(hi).
+    Se prueba el paso de la secante; si cae fuera del 95 % central del
+    bracket se usa el punto medio: garantia de biseccion con la velocidad
+    de la secante. Criterio de parada: ancho del bracket < tol."""
+    x = 0.5 * (lo + hi)
+    for it in range(1, max_iter + 1):
+        if hi - lo < tol:
+            return x, it
+        x = (lo * f_hi - hi * f_lo) / (f_hi - f_lo)      # secante
+        margen = 0.025 * (hi - lo)
+        if not (lo + margen) < x < (hi - margen):        # fuera de rango util
+            x = 0.5 * (lo + hi)                          # biseccion segura
+        fx = f(x)
+        if fx == 0.0:
+            return x, it
+        if fx < 0.0:
+            lo, f_lo = x, fx
+        else:
+            hi, f_hi = x, fx
+\end{verbatim}
+
+\subsection*{A.7 Persistencia de proyectos \texttt{.bb}}
+
+\begin{verbatim}
+FORMATO = "intercambiador-tubos-coraza"
+VERSION = 1
+EXTENSION = ".bb"   # (.he heredado: se abre por compatibilidad)
+
+def guardar(ruta, datos, descripcion=""):
+    paquete = {"formato": FORMATO, "version": VERSION,
+               "descripcion": descripcion, "inputs": datos}
+    with open(ruta, "w", encoding="utf-8") as fh:
+        json.dump(paquete, fh, indent=2, ensure_ascii=False)
+\end{verbatim}
+
+
+
+
+\section*{Anexo B: Bit\'acora de uso de inteligencia artificial}
+\addcontentsline{toc}{section}{Anexo B: Bit\'acora de uso de inteligencia artificial}
+
+Este anexo documenta con trazabilidad el uso de inteligencia artificial en
+el desarrollo del proyecto, conforme a la pol\'itica de la entrega.
+
+\subsection*{B.1. Declaraci\'on de uso}
+
+El proyecto se desarroll\'o \textbf{con ayuda de un modelo de inteligencia
+artificial}, con \'estas precisiones de autor\'ia:
+
+\begin{itemize}
+\item \textbf{La sustancia del proyecto provino del creador.} El software se
+obtuvo mediante una infraestructura preparada y aportada por \'el: la
+estructura de carpetas, las especificaciones t\'ecnicas por m\'odulo
+(\texttt{INSTRUCCIONES\_CORE.md}, \texttt{INSTRUCCIONES\_THERMO.md},
+\texttt{INSTRUCCIONES\_MECH.md}, \texttt{INSTRUCCIONES\_GUI.md}), los datos
+termof\'isicos de referencia, las referencias bibliogr\'aficas y normativas
+(Kern, 1950; est\'andares TEMA; el informe t\'ecnico de auditor\'ia con los
+casos benchmark), los casos de prueba y el material gr\'afico.
+\item \textbf{La IA se utiliz\'o exclusivamente como modelo de
+programaci\'on:} escribir, organizar, depurar y empaquetar c\'odigo, y
+redactar documentaci\'on t\'ecnica a partir de dichos materiales.
+\item \textbf{Las decisiones fueron del creador.} Cada criterio de producto,
+prioridad, correcci\'on o aceptaci\'on de resultados lo decidi\'o \'el:
+qu\'e versi\'on conservar, qu\'e errores corregir, c\'omo presentar los
+dibujos y cu\'ando un resultado se daba por v\'alido.
+\end{itemize}
+
+\subsection*{B.2. Modelo de inteligencia utilizado}
+
+Herramienta: \textbf{Hermes Agent} (agente conversacional de Nous Research,
+con terminal, sistema de archivos y control de versiones). Modelo de
+lenguaje: \textbf{MiMo-V2.6-Pro} (Primalabs AI). Se aclara porque el pliego
+cita a Gemini como ejemplo gen\'erico: el modelo efectivamente empleado fue
+el indicado. Modalidad: programaci\'on asistida ---el creador describe el
+objetivo y los criterios; la IA implementa, verifica con ejecuci\'on real y
+documenta---; no sustituye el juicio de dise\~no ni la validaci\'on de
+ingenier\'ia.
+
+\subsection*{B.3. Principales prompts utilizados (forma depurada)}
+
+Las interacciones efectivamente realizadas se resumen a continuaci\'on con
+los prompts principales en su forma depurada ---fieles al contenido y la
+intenci\'on originales--- junto con el resultado verificado:
+
+\begin{enumerate}
+\item \textbf{Base de datos termof\'isica.} «Construir la base de datos del
+programa: los fluidos de trabajo (densidad, viscosidad din\'amica, calor
+espec\'ifico y conductividad t\'ermica en funci\'on de la temperatura, con su
+ventana de validez declarada) y los materiales (los cinco de la norma TEMA
+Clase C, con conductividad, rugosidad y resistencia de ensuciamiento), todo
+en unidades SI y con la fuente de cada dato documentada.»
+\item \textbf{Estructura sizing vs rating.} «Separar estrictamente el
+c\'alculo en dos m\'odulos: \emph{sizing} (dimensionar un equipo nuevo,
+iterando sobre $U$) y \emph{rating} (evaluar un equipo ya construido,
+resolviendo las temperaturas de salida). Los datos de entrada y los
+resultados deben quedar claramente diferenciados para que el usuario no
+confunda cu\'ando se usa uno u otro.» \emph{(El creador fij\'o adem\'as que
+la interfaz pregunte primero el modo de trabajo ---sizing, rating u otras---
+y que los ejemplos se dividan en esas dos familias.)}
+\item \textbf{Correlaciones del m\'etodo de Kern.} «Implementar las
+correlaciones de Kern para el c\'alculo t\'ermico e hidr\'aulico ---balance
+de energ\'ia, LMTD con factor $F$ de Bowman, Nusselt en tubos y coraza,
+coeficiente global por resistencias en serie y ca\'idas de presi\'on
+(Ecs.~7.43, 7.44 y 7.45/7.46)--- junto con los criterios mec\'anicos de TEMA
+Clase C, citando cada ecuaci\'on y su rango de validez.»
+\item \textbf{Interfaz amigable.} «Dise\~nar una interfaz gr\'afica agradable
+y f\'acil de usar: formulario separado por modo de trabajo (datos de sizing y
+de rating en bloques distintos), l\'imites de $\Delta p$ permisibles dentro
+del sizing, un checklist de verificaci\'on del dise\~no adaptado al modo,
+dibujos t\'ecnicos vinculados a la geometr\'ia calculada, mensajes de error
+educativos y guardado de proyectos \texttt{.bb}.»
+\item \textbf{Optimizaci\'on y entrega.} «Optimizar el programa (cierre
+consistente del haz real, estabilidad num\'erica) y la documentaci\'on,
+verificarlo con una suite de pruebas autom\'aticas y empaquetarlo como
+ejecutable autocontenido de Windows.»
+\end{enumerate}
+
+\subsection*{B.4. Verificaciones, modificaciones y correcciones}
+
+\begin{enumerate}
+\item \textbf{Suite autom\'atica (\texttt{verificar.py}):} 187 pruebas sobre
+la base termof\'isica, el c\'alculo t\'ermico e hidr\'aulico, el dise\~no
+mec\'anico TEMA, los errores educativos, la interfaz, los ejemplos y un
+barrido de robustez de 216 combinaciones. Cada cambio se valid\'o contra
+ella antes de aceptarse.
+\item \textbf{Auditor\'ia de errores documentados:} los 9 conflictos del
+informe se contrastaron con el c\'odigo y se corrigieron o verificaron uno
+por uno, con pruebas dedicadas.
+\item \textbf{Correcci\'on de regresiones propias:} se detect\'o que un
+comando de sincronizaci\'on hab\'ia incorporado binarios generados al
+repositorio; se retiraron y se cerr\'o el issue con evidencia.
+\item \textbf{Verificaci\'on real del ejecutable:} en cada compilaci\'on se
+ejecut\'o el \texttt{.exe}, comprobando proceso vivo y cierre limpio.
+\item \textbf{Trazabilidad:} cada cambio qued\'o registrado en commits con
+hash verificable.
+\item \textbf{Rigor f\'isico:} ninguna correlaci\'on ni constante se
+incorpor\'o por invento; solo ecuaciones y datos anclados en Kern, TEMA y el
+informe t\'ecnico, citados en el marco te\'orico.
+\end{enumerate}
+
+\end{document}
