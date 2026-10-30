@@ -1,0 +1,423 @@
+% -*- coding: utf-8 -*-
+% Bitácora de uso de inteligencia artificial — Intercambiador de Tubos y Coraza
+% Documento compilable (tectonic / pdflatex).
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[spanish]{babel}
+\usepackage[table]{xcolor}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+
+% --- Paleta morada del proyecto -------------------------------------------
+\geometry{margin=2.4cm}
+\definecolor{morado}{HTML}{5E2B8C}
+\definecolor{acento}{HTML}{7E57C2}
+\definecolor{seccion}{HTML}{EDE7F6}
+\definecolor{gristexto}{HTML}{3B3648}
+\hypersetup{colorlinks=true, linkcolor=morado, urlcolor=acento}
+
+\titleformat{\section}{\Large\bfseries\color{morado}}{\thesection}{0.6em}{}[{\color{acento}\titlerule}]
+\titleformat{\subsection}{\large\bfseries\color{acento}}{\thesubsection}{0.5em}{}
+\renewcommand{\familydefault}{\sfdefault}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{morado}\textbf{Boh\'orquez $\cdot$ M\'arquez $\cdot$ Monta\~no $\cdot$ Mor\'e}}
+\fancyhead[R]{\small\color{gristexto}Intercambiador de Tubos y Coraza}
+\fancyfoot[C]{\small\color{gristexto}\thepage}
+
+\begin{document}
+
+% --- Portada ---------------------------------------------------------------
+\begin{center}
+{\color{acento}\rule{\linewidth}{2pt}}\\[1.2cm]
+{\Huge\bfseries\color{morado} Bitácora de uso de\\[0.4em]
+inteligencia artificial}\\[0.6em]
+{\Large\color{acento} Herramienta computacional educativa para el diseño de\\
+intercambiadores de calor de tubos y coraza}\\[0.5em]
+{\large\color{gristexto} Método de Kern $\cdot$ Norma TEMA Clase C}\\[0.8cm]
+{\color{acento}\rule{\linewidth}{1pt}}\\[0.6cm]
+{\large\color{gristexto} Transferencia de Calor / Diseño de Equipos Térmicos
+\quad $\cdot$ \quad Octubre de 2026}\\[0.8cm]
+{\large\color{gristexto}
+\textbf{Boh\'orquez Bar\'on, Diego Nicol\'as} \quad \texttt{dibohorquezb@unal.edu.co}\\[0.25em]
+\textbf{M\'arquez Ariza, Sara Camila} \quad \texttt{samarqueza@unal.edu.co}\\[0.25em]
+\textbf{Monta\~no Ria\~no, Samuel} \quad \texttt{samontanor@unal.edu.co}\\[0.25em]
+\textbf{Mor\'e D\'iaz, Carlos Andr\'es} \quad \texttt{cmore@unal.edu.co}}
+\end{center}
+\vspace{1.2cm}
+
+\section{Declaración de uso de inteligencia artificial}
+
+Este proyecto se desarrolló \textbf{con ayuda de un modelo de inteligencia
+artificial}, y esta bitácora documenta ese uso con trazabilidad completa, tal
+como exige la política de la entrega. Conviene, sin embargo, precisar la
+naturaleza de esa ayuda, porque define la autoría del trabajo:
+
+\begin{itemize}
+\item \textbf{La sustancia del proyecto provino del creador.} El software se
+obtuvo mediante una infraestructura preparada y aportada por él: la estructura
+de carpetas del proyecto, las especificaciones técnicas por módulo
+(\texttt{INSTRUCCIONES\_CORE.md}, \texttt{INSTRUCCIONES\_THERMO.md},
+\texttt{INSTRUCCIONES\_MECH.md}, \texttt{INSTRUCCIONES\_GUI.md}), los datos
+termofísicos de referencia, las referencias bibliográficas y normativas
+(Kern, 1950; estándares TEMA; el informe técnico de auditoría con los casos
+benchmark), los casos de prueba de ejemplo y el material gráfico del programa.
+\item \textbf{La IA se utilizó exclusivamente como modelo de programación:}
+para escribir, organizar, depurar y empaquetar código, y para redactar
+documentación técnica a partir de los materiales anteriores.
+\item \textbf{Las decisiones fueron del creador.} Cada criterio de producto,
+prioridad, corrección o aceptación de resultados fue decidido por él: qué
+versión conservar, qué errores corregir, cómo presentar los dibujos, cuándo
+un resultado se daba por válido. La IA proponía alternativas; el creador
+elegía y validaba.
+\end{itemize}
+
+La información generada por la IA se verificó antes de incorporarse al código,
+a los cálculos o al documento final (ver sección~4).
+
+\section{Modelo de inteligencia utilizado}
+
+Para evitar ambigüedades en la trazabilidad —el pliego menciona a modo de
+ejemplo a Gemini— se aclara el modelo realmente empleado:
+
+\begin{center}
+\begin{tabular}{@{}p{4.2cm}p{9.6cm}@{}}
+\toprule
+\rowcolor{seccion}
+\textbf{Aspecto} & \textbf{Descripción} \\
+\midrule
+Herramienta & \textbf{Hermes Agent}, agente conversacional de
+\textbf{Nous Research}, con acceso a terminal, sistema de archivos y
+control de versiones. \\
+Modelo de lenguaje & \textbf{MiMo-V2.6-Pro} (Primalabs AI), el modelo que
+opera el agente Hermes en las sesiones de este proyecto. \\
+Modalidad de uso & Programación asistida: el creador describe el objetivo y
+los criterios; la IA implementa, verifica con ejecución real y documenta. \\
+Alcance & Generación de código, depuración, pruebas automáticas,
+empaquetado del ejecutable, control de versiones y redacción técnica.
+No sustituye el juicio de diseño ni la validación de ingeniería. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Infraestructura aportada por el creador}
+
+El trabajo de la IA se apoyó en un ecosistema que el creador preparó,
+documentó y sostuvo durante todo el proyecto:
+
+\begin{enumerate}
+\item \textbf{Carpeta del proyecto y guías de trabajo:} un repositorio con
+instrucciones por fases (validaciones, core, cálculo, interfaz, mecánica),
+que fijaban restricciones técnicas y de redacción en cada módulo.
+\item \textbf{Datos:} la base termofísica (10 fluidos con rangos de validez,
+5 materiales TEMA Clase C), los casos de ejemplo en formato \texttt{.bb} y
+las tablas del informe técnico de auditoría.
+\item \textbf{Referencias:} Kern (1950), los estándares TEMA en las ediciones
+9.ª y 10.ª, y el artículo guía de Tan y Fok (2006).
+\item \textbf{Material gráfico:} el icono de la aplicación y el criterio
+visual de las vistas técnicas.
+\item \textbf{Decisiones y validación:} revisiones comparativas entre
+versiones, criterios de corrección y la verificación final de resultados.
+\end{enumerate}
+
+\section{Bitácora de interacciones (principales prompts)}
+
+A continuación se registran las interacciones efectivamente realizadas
+durante el desarrollo. Se presentan los \textbf{prompts principales} en su
+forma depurada —fiel al contenido y la intención originales, redactados para
+su lectura técnica— junto con el resultado y la verificación aplicada.
+
+El desarrollo sigui\'o el orden natural de construcci\'on del software. Los
+prompts principales ---depurados para su lectura t\'ecnica pero fieles a la
+intenci\'on y las decisiones del creador--- fueron:
+
+\begin{enumerate}
+\item \textbf{Base de datos termof\'isica.} «Construir la base de datos del
+programa: los fluidos de trabajo (densidad, viscosidad din\'amica, calor
+espec\'ifico y conductividad t\'ermica en funci\'on de la temperatura, con su
+ventana de validez declarada) y los materiales (los cinco de la norma TEMA
+Clase C, con conductividad, rugosidad y resistencia de ensuciamiento), todo
+en unidades SI y con la fuente de cada dato documentada.»
+\item \textbf{Estructura sizing vs rating.} «Separar estrictamente el
+c\'alculo en dos m\'odulos: \emph{sizing} (dimensionar un equipo nuevo,
+iterando sobre $U$) y \emph{rating} (evaluar un equipo ya construido,
+resolviendo las temperaturas de salida). Los datos de entrada y los
+resultados deben quedar claramente diferenciados para que el usuario no
+confunda cu\'ando se usa uno u otro.» \emph{(El creador fij\'o adem\'as que
+la interfaz pregunte primero el modo de trabajo ---sizing, rating u otras---
+y que los ejemplos se dividan en esas dos familias.)}
+\item \textbf{Correlaciones del m\'etodo de Kern.} «Implementar las
+correlaciones de Kern para el c\'alculo t\'ermico e hidr\'aulico ---balance
+de energ\'ia, LMTD con factor $F$ de Bowman, Nusselt en tubos y coraza,
+coeficiente global por resistencias en serie y ca\'idas de presi\'on
+(Ecs.~7.43, 7.44 y 7.45/7.46)--- junto con los criterios mec\'anicos de TEMA
+Clase C, citando cada ecuaci\'on y su rango de validez.»
+\item \textbf{Interfaz amigable.} «Dise\~nar una interfaz gr\'afica agradable
+y f\'acil de usar: formulario separado por modo de trabajo (datos de sizing y
+de rating en bloques distintos), l\'imites de $\Delta p$ permisibles dentro
+del sizing, un checklist de verificaci\'on del dise\~no adaptado al modo,
+dibujos t\'ecnicos vinculados a la geometr\'ia calculada, mensajes de error
+educativos y guardado de proyectos \texttt{.bb}.»
+\item \textbf{Optimizaci\'on y entrega.} «Optimizar el programa (cierre
+consistente del haz real, estabilidad num\'erica) y la documentaci\'on,
+verificarlo con una suite de pruebas autom\'aticas y empaquetarlo como
+ejecutable autocontenido de Windows.»
+\item \textbf{Verificación con ejercicios de la literatura.} «Sustituir los
+casos de servicio por ocho ejercicios resueltos de la literatura ---cuatro
+de \emph{sizing} y cuatro de \emph{rating}---, compararlos en el documento
+final en un apartado nuevo y dejar el caso de Tan y Fok en un apartado
+aparte con el análisis de sus diferencias. Lo importante es demostrar que
+el programa sirve: que no tiene errores de cálculo de Reynolds ni de
+presión y que compara bien.» \emph{(Resultado: ocho casos de Janna, Kern,
+Sinnott--Towler, Subramanian y Karimi, con tablas de comparación por
+magnitud; documento final, secciones 6 y 7.)}
+\item \textbf{Fuentes oficiales y temperatura de evaluación.} «No se pueden
+usar fuentes como Wikipedia: solo fuentes oficiales, libros donde se muestren
+las propiedades en función de la temperatura; además, revisa que las
+correlaciones se estén evaluando a la temperatura que corresponde.»
+\emph{(Resultado: base termofísica revalidada contra Incropera A.4/A.5,
+Perry's/DIPPR, IAPWS y ASHRAE; auditoría de temperaturas: propiedades a la
+temperatura media de cada lado, $T_w$ para el factor de pared y cada
+correlación en su régimen.)}
+\item \textbf{Justificación de las desviaciones.} «¿Pero justificaste los
+errores? Ahora agrega una justificación para lo de Tan y Fok; necesito que
+todo en el documento quede lo mejor explicado.» \emph{(Resultado: tabla
+«Causa atribuida a cada desviación» para los ocho ejercicios, su equivalente
+para Tan y Fok y la descomposición cuantitativa de su diferencia: ninguna
+desviación queda sin causa documentada.)}
+\item \textbf{Caídas de presión y fuentes inconsistentes.} «No sé por qué
+siguen existiendo casos donde el error asociado con la caída de presión es
+tan abrupto, caso Kharaji; revisa los cálculos o dime el porqué. Además, lo
+de Tan y Fok sigue siendo bastante ilógico, no entiendo por qué no da.»
+\emph{(Resultado: el artículo de Karimi no publica su diámetro interno; su
+velocidad exige $d_i = 9{,}244$ mm y con él la desviación de $\Delta p_t$
+baja del $85\%$ al $5{,}7\%$; las diferencias restantes son de convención y
+de la propia inconsistencia de las fuentes, todo documentado.)}
+\item \textbf{Optimización del ejecutable.} «¿Puedo confiar en todo lo que
+construiste? Porfa, optimiza el \texttt{.exe}, está algo lento.»
+\emph{(Resultado: PyInstaller incluía PIL sin usar; excluido, el arranque
+pasó de 12--25 s a 2,5 s (\emph{onefile}) y 0,35 s (versión rápida); la
+confianza se respaldó con la suite de 153 pruebas y los scripts de
+verificación incluidos en la entrega.)}
+\item \textbf{Cálculo de tubos necesarios.} «Sigo percibiendo errores en el
+cálculo de tubos necesarios; revísalo muy bien, ¡en uno está casi al
+doble!» \emph{(Resultado: el punto de diseño podía quedar por debajo de la
+ventana de velocidad e inflar el área; el \emph{sizing} ahora elige el
+número de pasos para que la velocidad entre en la ventana ---como diseña
+Kern--- y el caso afectado pasa de 348 a 268 tubos, con $U$ en el valor
+publicado.)}
+\item \textbf{Auditoría del Reynolds.} «Revisa muy bien los cálculos del
+Reynolds; he notado que a veces es muy distinto entre teoría y práctica.
+¿Por qué difieren? ¿Se basa en las iteraciones?» \emph{(Resultado: el
+cálculo es determinista, no depende de las iteraciones; la diferencia viene
+de la temperatura de evaluación de la viscosidad ---desplazamientos de 0,5 a
+3,5 K explican del 1 al 9\%--- y, en una fuente, de calcular el $Re$ con el
+diámetro exterior en vez del interior.)}
+\item \textbf{Correlación 9 y factor de fricción.} «La correlación 9 tiene
+dos formas, la de calentamiento y la de enfriamiento; aparte, revisa los
+cálculos de la caída de presión ---es fundamental que funcione a la
+perfección--- y cómo se calcula el factor de fricción. Creo que la cita de
+la sección 6.4 está mal.» \emph{(Resultado: Dittus--Boelter implementado con
+sus dos exponentes, $n = 0{,}4$ calentamiento y $n = 0{,}3$ enfriamiento
+(Incropera, ec.~6.61); factores de fricción verificados frente a
+Colebrook--White (error máximo $1{,}34\%$) y a los ejemplos publicados de
+Kern ($+0{,}1\%$ y $+2{,}1\%$); la cita de Hewitt corregida a 1994 con sus
+páginas y una fórmula del documento reparada.)}
+\end{enumerate}
+
+\section{Verificaciones, modificaciones y correcciones realizadas}
+
+El equipo (creador asistido por IA) aplicó las siguientes verificaciones,
+todas con evidencia reproducible:
+
+\begin{enumerate}
+\item \textbf{Suite de verificación automática (\texttt{verificar.py}):}
+153 pruebas que cubren la base termofísica, el cálculo térmico e hidráulico,
+el diseño mecánico TEMA, el manejo de errores educativo, la interfaz
+gráfica, los proyectos de ejemplo y un barrido de robustez de 216
+combinaciones de entrada. Cada modificación del código se validó contra
+esta suite antes de aceptarse (resultados: 123/123 $\rightarrow$ 135/135
+$\rightarrow$ 153/153 tras la revisión de regímenes).
+\item \textbf{Auditoría de los errores documentados:} los 9 conflictos del
+informe técnico se contrastaron con el código fuente y se verificó su
+corrección efectiva (o su corrección puntual cuando persistían), con
+pruebas dedicadas para cada uno.
+\item \textbf{Corrección de regresiones propias:} se detectó que un comando
+de sincronización había incorporado archivos binarios generados al
+repositorio; se retiraron, se agregó \texttt{.gitignore} y se cerró el
+issue correspondiente con evidencia.
+\item \textbf{Verificación real del ejecutable:} el \texttt{.exe} se
+ejecutó en cada compilación, comprobando proceso vivo y cierre limpio; no
+se dio por bueno un build por el simple hecho de terminar sin error.
+\item \textbf{Trazabilidad por control de versiones:} cada cambio quedó
+registró en commits con hash verificable (estado local = remoto).
+\item \textbf{Verificación física:} ninguna correlación ni constante se
+incorporó por invento; solo se usaron las ecuaciones y datos anclados en
+Kern, TEMA y el informe técnico, con sus fuentes citadas.
+\item \textbf{Cobertura completa de los regímenes laminar y de transición:}
+los errores que aparecían cuando el cálculo caía en régimen laminar se
+resolvieron con correlaciones clásicas verificadas en la documentación
+técnica consultada en línea (guía de transferencia de calor de
+neqsim/equinor): la solución de Graetz con entrada térmica de
+\textbf{Hausen (1959)} para tubos en laminar, la de \textbf{Gnielinski
+(1976)} para la transición ($2300 \le Re < 5\cdot 10^6$, con factor de
+fricción de Petukhov) y la rama laminar de Kern con dependencia de Graetz
+($D_e/B$) para la coraza. La continuidad de $Nu(Re)$ en los bordes de cada
+banda se verificó numéricamente y un barrido de 504 combinaciones de
+fluidos y caudales laminares no produjo ninguna excepción. Con estas
+correlaciones el número de tubos del dimensionamiento baja en los casos de
+transición ---el caso base pasa de $502$ a $470$ tubos--- y las desviaciones
+frente al benchmark documentado del proyecto caen del $4$--$9\%$ al
+$0{,}5$--$3{,}4\%$.
+\item \textbf{Verificación de las caídas de presión frente a la literatura:}
+las ecuaciones implementadas reproducen las ecuaciones 7.44--7.46 de Kern
+(1950), incluida su convención de \emph{cuatro cabezas de velocidad por paso}
+en la pérdida por retorno (cita literal del libro, verificada en el texto
+completo consultado en línea). Como contraste numérico, aplicadas al equipo
+de Tan y Fok con la velocidad que impone su artículo ($v = 0{,}6$ m/s) dan
+$\Delta p_t = 1873$ Pa frente a sus $1975{,}59$ Pa publicados (desviación
+$5{,}2\%$). Se cuantificó además la dispersión de la literatura en esa
+convención (Serth $(2n_p-1)$ cabezas, Frank $2{,}5$, Bell--Mueller $3$,
+HEXTRAN $2$, Saunders $0{,}9$--$1{,}6$ por paso): elegir otra convención
+cambia $\Delta p_t$ entre un $11{,}5$ y un $37{,}8\%$, y esa diferencia de
+criterio ---no un error de cálculo--- explica las discrepancias aparentes
+frente a otras fuentes. La verificación reproducible queda en
+\texttt{validar\_caidas.py} y la de correlaciones en
+\texttt{validar\_literatura.py}.
+
+\item \textbf{Auditoría final de correlaciones, temperaturas y fricción:}
+se verificó que cada correlación se evalúa a su temperatura propia
+(propiedades a la temperatura media de cada lado, $T_w$ para el factor de
+pared), que la forma de Dittus--Boelter aplica sus dos exponentes según el
+sentido del calor ($0{,}4/0{,}3$) y que los factores de fricción reproducen
+a Colebrook--White (error máximo $1{,}34\%$ para la aproximación de Haaland)
+y los ejemplos publicados de Kern ($+0{,}1\%$ en $\Delta p_t$ y $+2{,}1\%$
+en $\Delta p_s$). El Reynolds se descompuso frente a la literatura
+evaluando la viscosidad a distintas temperaturas, lo que descartó a las
+iteraciones como causa de las diferencias.
+\end{enumerate}
+
+\section{Alcance y limitaciones declaradas}
+
+\begin{itemize}
+\item La IA es una herramienta de \textbf{programación y redacción}; no
+certifica diseños ni sustituye el análisis de ingeniería. Los resultados de
+la herramienta son educativos y no constituyen planos de fabricación.
+\item Cualquier resultado numérico generado durante el desarrollo fue
+ejecutado y comparado antes de darse por bueno; las cifras de este documento
+y del informe salen de ejecuciones reales del programa.
+\item Las decisiones de producto —qué conservar, qué corregir, cómo
+presentar— fueron del creador en todas las interacciones registradas.
+\end{itemize}
+
+\vspace{0.6cm}
+{\color{acento}\rule{\linewidth}{2pt}}\\[0.3cm]
+{\small\color{gristexto} Documento generado como anexo de trazabilidad del uso
+de inteligencia artificial. Proyecto: Intercambiador de Tubos y Coraza
+(método de Kern / TEMA Clase C).}
+
+\section*{Anexo: Procedencia de la base de datos termof\'isicas}
+\addcontentsline{toc}{section}{Anexo: Procedencia de la base de datos}
+
+La infraestructura de datos ---fluidos, materiales y ensuciamientos---
+es obra del creador del proyecto; la IA la documenta aqu\'i con sus
+fuentes, tal como consta en el c\'odigo fuente.
+
+
+Este anexo documenta el origen de cada dato de la base termof\'isica del
+programa (\texttt{src/core/thermo\_data.py}), la \'unica fuente de
+verdad del motor de c\'alculo. Todas las correlaciones se eval\'uan en
+unidades SI con la temperatura en kelvin, declaran su ventana de validez y
+\textbf{rechazan el c\'alculo fuera de ella} (error \texttt{ValueError})
+en lugar de extrapolar: una correlaci\'on emp\'irica extrapolada no es
+f\'isica.
+
+\subsection*{C.1. Fluidos: ventanas de validez y fuentes del ajuste}
+
+\begin{center}
+{\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Fluido} & \textbf{Ventana declarada} & \textbf{Fuente del ajuste} \\
+\midrule
+Agua l\'iquida & $0$--$100\,^{\circ}$C & IAPWS-IF97 (l\'iquido saturado) \\
+Vapor de agua ($1$ atm) & $100$--$600\,^{\circ}$C & Incropera, Tabla A.4 \\
+Aire ($1$ atm) & $-73$--$727\,^{\circ}$C & Incropera Tabla A.4; $\mu$ y $k$ por Sutherland \\
+Etanol & $0$--$75\,^{\circ}$C & Perry's, octava ed. / tipo DIPPR \\
+Metanol & $0$--$60\,^{\circ}$C & \textit{idem} \\
+Etilenglicol & $0$--$197\,^{\circ}$C & \textit{idem} \\
+Benceno & $10$--$80\,^{\circ}$C & \textit{idem} \\
+Tolueno & $-20$--$100\,^{\circ}$C & \textit{idem} \\
+n-Hexano & $-20$--$60\,^{\circ}$C & \textit{idem} \\
+Amon\'iaco l\'iquido & $-40$--$50\,^{\circ}$C & ASHRAE / Perry's (l\'iquido saturado) \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+\subsection*{C.2. Ajuste y validaci\'on}
+
+Los polinomios de $\rho$, $c_p$ y $k$, y las correlaciones de viscosidad,
+se ajustaron por m\'inimos cuadrados a las tablas de las fuentes citadas.
+Dentro del rango declarado el error es menor del $2\%$ en $\rho$, $c_p$ y
+$k$ (t\'ipicamente menor del $0\,5\%$); la viscosidad ---la propiedad m\'as
+sensible a la fuente tabulada--- puede desviarse hasta un $5\%$ en
+alcoholes y glicol y un $20\%$ en amon\'iaco l\'iquido. La validaci\'on
+cuantificada se genera con \texttt{src/core/informe\_propiedades.py}
+(\texttt{informe\_propiedades.pdf}) y la suite autom\'atica la reverifica
+(p.~ej., agua a $25\,^{\circ}$C: $c_p = 4181$ J/kg$\cdot$K de referencia).
+
+\subsection*{C.3. Materiales s\'olidos (TEMA Clase C)}
+
+\begin{center}
+{\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Material} & \textbf{$k_m$ (W/m$\cdot$K)} & \textbf{$\rho_m$ (kg/m\textsuperscript{3})} & \textbf{$\varepsilon$ ($\mu$m)} & \textbf{$R_f$ (m\textsuperscript{2}K/W)} \\
+\midrule
+Cobre & 386,0 & 8933 & 1,5 & $1\,761\times 10^{-4}$ \\
+Acero al carbono & 60,5 & 7854 & 46 & $3\,522\times 10^{-4}$ \\
+Acero inoxidable AISI 304 & 14,9 & 7900 & 1,5 & $1\,761\times 10^{-4}$ \\
+Lat\'on Admiralty & 111,0 & 8530 & 1,5 & $1\,761\times 10^{-4}$ \\
+Aluminio & 237,0 & 2702 & 1,5 & $1\,761\times 10^{-4}$ \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+Conductividad y densidad a unos $300$ K; la rugosidad distingue tubo
+estirado ($1{,}5~\mu\mathrm{m}$) de acero comercial ($46~\mu\mathrm{m}$).
+
+\subsection*{C.4. Factores de ensuciamiento}
+
+Los factores siguen la tabla TEMA RGP-T-2.4, con la conversi\'on
+$1~\mathrm{h\cdot ft^2\cdot ^\circ F/Btu} = 0{,}17611~\mathrm{m^2 K/W}$;
+de ah\'i los $R_f = 1{,}761\times 10^{-4}$ y $3{,}522\times 10^{-4}$
+m$^2$K/W de la tabla anterior. La jerarqu\'ia que aplica el programa es:
+$R_f$ cargado por el usuario $>$ tabla del fluido $>$ mitad del $R_f$ del
+material; el caso de referencia de Tan y Fok reproduce exactamente los
+factores del art\'iculo ($R_{f,i} = 1{,}76\times 10^{-4}$ y
+$R_{f,o} = 3{,}52\times 10^{-4}$ m$^2$K/W).
+
+
+\subsection*{C.5. Base documental de los dibujos t\'ecnicos}
+
+Las cinco vistas param\'etricas del programa (corte longitudinal,
+distribuci\'on de tubos, placa deflectora, cabezal y brida, y el cat\'alog@
+TEMA) se basan en el \emph{Standards of the Tubular Exchanger Manufacturers
+Association}, d\'ecima edici\'on (TEMA, 2019) ---en particular su
+Figura~N-1.2 de tipos de carcasas y cabezales--- y en el documento
+\emph{TEMA Standards FAQ} (2020). Esos dos documentos, junto con el
+\texttt{informe\_propiedades.pdf} que respalda la base termof\'isica, se
+incluyen literalmente en la carpeta
+\texttt{04\_bitacora\_ia/referencias/} de esta entrega, de modo que cada
+dibujo y cada dato puedan rastrearse hasta su fuente primaria.
+
+\end{document}
