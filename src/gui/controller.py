@@ -332,6 +332,18 @@ def _alertas_delta_p(d: Dict[str, Any], r) -> None:
                 f"longitud). Cálculo según {ref}.")
 
 
+METODOS_CORAZA = ("kern", "bell_delaware")
+METODOS_CORAZA_UI = ("Kern (clásico)", "Bell-Delaware")
+
+
+def _metodo_coraza(d: Dict[str, Any]) -> str:
+    """Metodo de coraza pedido en el proyecto (por defecto Kern)."""
+    m = str(d.get("metodo_coraza") or "kern").strip().lower()
+    if "bell" in m:
+        return "bell_delaware"
+    return m if m in METODOS_CORAZA else "kern"
+
+
 def correr_sizing(d: Dict[str, Any]):
     """Metodo de Kern: itera sobre U hasta converger el area requerida."""
     _exigir_modulos()
@@ -343,7 +355,8 @@ def correr_sizing(d: Dict[str, Any]):
     r = dimensionar(caliente, fria, tubos, coraza,
                     lado_tubos=d["lado_tubos"],
                     U_inicial=d["u_inicial"],
-                    holgura_haz=holgura)
+                    holgura_haz=holgura,
+                    metodo_coraza=_metodo_coraza(d))
     _alertas_delta_p(d, r)
     return r
 
@@ -355,7 +368,8 @@ def correr_rating(d: Dict[str, Any]):
     tubos, coraza = _geometria(d)
     geom = ExchangerGeometry(tubos=tubos, coraza=coraza,
                              N_tt=int(d["n_tt"]), D_s=d["d_s_mm"] / 1000.0)
-    r = evaluar(caliente, fria, geom, lado_tubos=d["lado_tubos"])
+    r = evaluar(caliente, fria, geom, lado_tubos=d["lado_tubos"],
+                metodo_coraza=_metodo_coraza(d))
     _alertas_delta_p(d, r)
     return r
 

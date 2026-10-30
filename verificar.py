@@ -400,6 +400,63 @@ def probar_laminar() -> None:
           "; ".join(r0.advertencias))
 
 
+
+# =============================================================================
+# 5d. METODO DE BELL-DELAWARE (lado coraza)
+# =============================================================================
+def probar_bell_delaware() -> None:
+    bloque("5d. Bell-Delaware: continuidad, factores y ejecucion")
+    from src.thermo.bell_delaware import (j_ideal, f_ideal,
+                                          lado_coraza_bell_delaware)
+    from src.gui import controller as ctrl
+    from src.gui.app import VALORES_DEFECTO
+
+    PT, DO = 0.0238125, 0.01905
+    saltos_j = []
+    for borde in (1e4, 1e3, 1e2, 1e1):
+        a = j_ideal(borde * 0.999, PT, DO, 30)
+        c = j_ideal(borde * 1.001, PT, DO, 30)
+        saltos_j.append(abs(c - a) / a)
+    check(max(saltos_j) < 0.10,
+          f"j_i continua en los bordes de la tabla Taborek "
+          f"(salto maximo {max(saltos_j)*100:.1f} %)")
+
+    r = lado_coraza_bell_delaware(
+        m_dot=21.98, rho=996.0, mu=8.0e-4, cp=4180.0, k=0.61, mu_w=7.0e-4,
+        D_s=0.40005, D_o=DO, P_T=PT, B=0.3048, layout=30,
+        N_tt=160, N_baffles=15, corte=0.25, L_tubo=4.8768)
+    check(0.53 <= r["J_c"] <= 1.15, f"J_c = {r['J_c']:.3f} en el rango 0.53-1.15")
+    check(0.65 <= r["J_l"] <= 0.85, f"J_l = {r['J_l']:.3f} en el rango tipico 0.7-0.8")
+    check(0.65 <= r["J_b"] <= 0.92, f"J_b = {r['J_b']:.3f} en el rango tipico 0.7-0.9")
+    check(0.45 <= r["J_c"] * r["J_l"] * r["J_b"] * r["J_r"] <= 0.85,
+          f"producto Jc*Jl*Jb*Jr = {r['J_c']*r['J_l']*r['J_b']*r['J_r']:.2f} "
+          f"(intercambiador bien disenado ~0.6)")
+    check(4000.0 < r["h_o"] < 9000.0,
+          f"h_o = {r['h_o']:.0f} W/m2K coherente para agua en el Ej. 7.4")
+    check(r["dp_s"] > 0.0, f"dp_s = {r['dp_s']:.0f} Pa positiva")
+
+    base = dict(VALORES_DEFECTO, tout_fri=None, fluido_cal="Agua",
+                m_cal=21.98, tin_cal=33.89, tout_cal=29.44, m_fri=35.2,
+                tin_fri=23.89, long_m=4.8768, baffle_mm=304.8, n_pasos="2")
+    r_kern = ctrl.correr_sizing(dict(base, metodo_coraza="Kern (clásico)"))
+    r_bd = ctrl.correr_sizing(dict(base, metodo_coraza="Bell-Delaware"))
+    check(r_bd.U > 0 and r_bd.h_o > 0 and r_bd.dp_s > 0,
+          f"el sizing con Bell-Delaware converge: U = {r_bd.U:.0f} W/m2K, "
+          f"h_o = {r_bd.h_o:.0f}, dp_s = {r_bd.dp_s:.0f} Pa")
+    check(0.5 < r_bd.h_o / r_kern.h_o < 2.0,
+          f"h_o Bell-Delaware/Kern = {r_bd.h_o/r_kern.h_o:.2f} "
+          f"(los metodos deben coincidir en orden de magnitud)")
+    check(r_bd.metodo_coraza == "bell_delaware" and r_kern.metodo_coraza == "kern",
+          "el resultado registra el metodo de coraza usado")
+    r_def = ctrl.correr_sizing(dict(base))
+    check(abs(r_def.U - r_kern.U) < 1e-9 and r_def.N_tt == r_kern.N_tt,
+          f"sin metodo declarado el sizing sigue siendo Kern (U = {r_def.U:.1f} "
+          f"W/m2K identico; sin regresion tras integrar Bell-Delaware)")
+    check(r_bd.U != r_kern.U,
+          f"Bell-Delaware produce un resultado distinto de Kern "
+          f"(U = {r_bd.U:.1f} vs {r_kern.U:.1f} W/m2K)")
+
+
 # =============================================================================
 # 6. GUI
 # =============================================================================
@@ -616,7 +673,8 @@ def probar_ejemplos() -> None:
             for clave, valor in crudo.items():
                 if clave in ("fluido_cal", "fluido_fri", "lado_tubos", "layout",
                              "n_pasos", "mat_tubo", "tipo_carcasa",
-                             "cab_frontal", "cab_trasero", "mat_carcasa"):
+                             "cab_frontal", "cab_trasero", "mat_carcasa",
+                             "metodo_coraza"):
                     datos[clave] = valor
                 else:
                     datos[clave] = (float(valor)
@@ -695,7 +753,8 @@ def main() -> int:
     print("VERIFICACION DEL SOFTWARE DE INTERCAMBIADORES DE TUBOS Y CORAZA")
     print("=" * 68)
     for prueba in (probar_core, probar_calculo, probar_errores,
-                   probar_tipos_tema, probar_laminar, probar_gui,
+                   probar_tipos_tema, probar_laminar, probar_bell_delaware,
+                   probar_gui,
                    probar_ejemplos, probar_robustez):
         try:
             prueba()

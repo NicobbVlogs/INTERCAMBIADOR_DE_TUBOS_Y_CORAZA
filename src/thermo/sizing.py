@@ -28,6 +28,7 @@ from typing import List, Optional, Tuple
 try:
     from src.core.errores import ErrorDiseno
     from src.core.thermo_data import FluidState, ThermoDatabase
+    from src.thermo.bell_delaware import lado_coraza_bell_delaware
 except ImportError:  # ejecucion directa: `python src/thermo/sizing.py`
     sys.path.insert(0, os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -143,6 +144,7 @@ class SizingResult:
     iteraciones: int
     regimen_tubo: str
     regimen_coraza: str
+    metodo_coraza: str = "kern"   # 'kern' | 'bell_delaware'
     advertencias: List[str] = field(default_factory=list)
 
 
@@ -341,7 +343,9 @@ def factor_correccion_F(T_h_in: float, T_h_out: float,
     F          : 2 pasadas por coraza en serie -> se reduce el P por pasada y
                  se aplica la misma expresion 1-2 a cada pasada.
     G, H, J    : flujo partido/dividido -> cada rama trabaja casi en
-                 contracorriente, F = 1 (aproximacion conservadora usual).
+                 contracorriente. Para G/H/J, F = 1 es una aproximacion SIN
+                 correccion de Bowman: el F real puede ser inferior a 1 y el
+                 area quedaria corta (no es una cota conservadora).
     K          : caldera (lado coraza isotermico en ebullicion) -> F = 1.
     X          : flujo cruzado puro, una pasada -> F = 1.
     """
@@ -492,7 +496,8 @@ def nusselt_coraza(Re: float, Pr: float, phi: float,
     Devuelve (Nu, regimen). Cubre TODO el espectro:
 
     Re >= 2e3      : Kern turbulento, Nu = 0.36 Re^0.55 Pr^(1/3) phi.
-    Re < 100       : Kern laminar,  Nu = 1.72 (Re Pr D_e/L_b)^(1/3) phi
+    Re < 100       : laminar (Sieder-Tate 1936, forma de Graetz aplicada al
+                     canal entre baffles), Nu = 1.86 (Re Pr D_e/L_b)^(1/3) phi
                      (solucion tipo Graetz para el canal entre baffles),
                      con piso Nu = 3.66 (pared isotermica).
     100 <= Re < 2e3: transicion - mezcla log-log CONTINUA entre la rama
@@ -508,7 +513,7 @@ def nusselt_coraza(Re: float, Pr: float, phi: float,
     def _laminar(Re_x: float) -> float:
         if D_e is None or L_b is None or L_b <= 0.0:
             return 3.66
-        return max(1.72 * (Re_x * Pr * D_e / L_b) ** (1.0 / 3.0) * phi, 3.66)
+        return max(1.86 * (Re_x * Pr * D_e / L_b) ** (1.0 / 3.0) * phi, 3.66)
 
     def _turbulento(Re_x: float) -> float:
         return 0.36 * Re_x ** 0.55 * Pr ** (1.0 / 3.0) * phi
@@ -548,13 +553,13 @@ def caida_presion_tubos(Re: float, rho: float, v_t: float, L: float,
         dp_friccion = n_pasos * f_t * (L / D_i) * (0.5 * rho * v_t^2) / phi_corr
         dp_retorno  = 4.0 * n_pasos * (0.5 * rho * v_t^2)
     (incluye 4 cabezas de velocidad por paso debido al giro en cabezales).
-    El exponente de la correccion por viscosidad de pared depende del regimen:
-    0.14 turbulento, 0.25 laminar (parche 5.2.1).
+    La correccion por viscosidad de pared es la de Kern, (mu/mu_w)^0.14
+    aplicada por igual en ambos regimenes (no se introduce un exponente
+    laminar sin respaldo en la fuente).
     Devuelve (dp_t [Pa], f_t [-]).
     """
     f_t = factor_friccion_tubos(Re, epsilon, D_i)
-    exponente_m = 0.14 if Re >= 2100.0 else 0.25
-    phi_corr = (phi_t ** (exponente_m / 0.14)) if phi_t > 0.0 else 1.0
+    phi_corr = phi_t if phi_t > 0.0 else 1.0
     cabeza_dinamica = 0.5 * rho * (v_t ** 2)
     dp_friccion = n_pasos * f_t * (L / D_i) * cabeza_dinamica / phi_corr
     dp_retorno = 4.0 * n_pasos * cabeza_dinamica
@@ -725,7 +730,8 @@ def dimensionar(caliente: Stream, fria: Stream,
                 tol: float = 1e-4,
                 max_iter: int = 100,
                 holgura_haz: float = 0.0,
-                _busca_pasos: bool = True) -> SizingResult:
+                _busca_pasos: bool = True,
+                metodo_coraza: str = "kern") -> SizingResult:
     """
     Dimensiona un intercambiador de tubos y coraza por el Metodo de Kern.
 
@@ -838,6 +844,23 @@ def dimensionar(caliente: Stream, fria: Stream,
     # resolverla por biseccion da el MISMO resultado con cualquier semilla y
     # con un residuo numerico controlado.
     estado: dict = {}
+    N_b_geo = max(int(math.floor(tubos.L / coraza.B + 1e-9)) - 1, 0)
+
+    def _h_o_coraza(D_s_x: float, N_tt_x: float, mu_w: float,
+                    Re_s_x: float, phi_s_x: float, D_e_x: float):
+        "h_o del lado coraza segun el metodo elegido (Kern o Bell-Delaware)."
+        if metodo_coraza == "bell_delaware":
+            bd = lado_coraza_bell_delaware(
+                por_coraza.m_dot, est_s.rho, est_s.mu, est_s.cp, est_s.k,
+                mu_w, D_s_x, tubos.D_o, tubos.P_T, coraza.B, tubos.layout,
+                int(max(N_tt_x, tubos.n_pasos)), N_b_geo,
+                coraza.corte_baffle, tubos.L)
+            reg = ("turbulento" if bd["Re"] >= 2.0e3
+                   else ("laminar" if bd["Re"] < 100.0 else "transicion"))
+            return bd["h_o"], reg, bd
+        Nu_s, reg = nusselt_coraza(Re_s_x, est_s.Pr, phi_s_x,
+                                  D_e_x, coraza.B)
+        return Nu_s * est_s.k / D_e_x, reg, None
 
     def U_de(U_trial: float) -> float:
         """U_calc(U_trial): geometria -> Re, Nu -> h -> U, con phi de pared."""
@@ -863,25 +886,24 @@ def dimensionar(caliente: Stream, fria: Stream,
         # 5. Correccion por viscosidad de pared (lazo interno acotado y
         #    determinista: se repite hasta que phi deja de moverse).
         phi_t = phi_s = 1.0
-        Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tubos.D_i, tubos.L, phi_t,
-                                 calentando=(T_t_m < T_s_m))
-        Nu_s, regimen_s = nusselt_coraza(Re_s, est_s.Pr, phi_s, D_e, coraza.B)
+        mu_w = est_s.mu
         h_i = h_o = 0.0
+        regimen_s = ""
         for _ in range(40):
             Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tubos.D_i, tubos.L,
                                           phi_t, calentando=(T_t_m < T_s_m))
-            Nu_s, regimen_s = nusselt_coraza(Re_s, est_s.Pr, phi_s, D_e,
-                                             coraza.B)
             h_i = Nu_t * est_t.k / tubos.D_i
-            h_o = Nu_s * est_s.k / D_e
+            h_o, regimen_s, _bd = _h_o_coraza(D_s_t, N_tt_f, mu_w, Re_s, phi_s, D_e)
             h_io = h_i * tubos.D_i / tubos.D_o
             T_w = (h_io * T_t_m + h_o * T_s_m) / (h_io + h_o)
             phi_t_n = (est_t.mu / mu_pared(por_tubos.fluido, T_w)) ** 0.14
-            phi_s_n = (est_s.mu / mu_pared(por_coraza.fluido, T_w)) ** 0.14
-            if abs(phi_t_n - phi_t) < 1e-9 and abs(phi_s_n - phi_s) < 1e-9:
-                phi_t, phi_s = phi_t_n, phi_s_n
+            mu_w_n = mu_pared(por_coraza.fluido, T_w)
+            phi_s_n = (est_s.mu / mu_w_n) ** 0.14
+            if (abs(phi_t_n - phi_t) < 1e-9
+                    and abs(mu_w_n - mu_w) <= 1e-9 * max(mu_w, 1e-12)):
+                phi_t, phi_s, mu_w = phi_t_n, phi_s_n, mu_w_n
                 break
-            phi_t, phi_s = phi_t_n, phi_s_n
+            phi_t, phi_s, mu_w = phi_t_n, phi_s_n, mu_w_n
 
         U_new = coeficiente_global(h_i, h_o, tubos.D_i, tubos.D_o,
                                    metal.k_m, R_fi, R_fo)
@@ -975,28 +997,36 @@ def dimensionar(caliente: Stream, fria: Stream,
 
     phi_t = phi_s = 1.0
     h_i = h_o = 0.0
+    phi_t = phi_s = 1.0
+    mu_w = est_s.mu
+    bd_final = None
     for _ in range(40):
         Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tubos.D_i, tubos.L, phi_t,
                                  calentando=(T_t_m < T_s_m))
-        Nu_s, regimen_s = nusselt_coraza(Re_s, est_s.Pr, phi_s, D_e, coraza.B)
         h_i = Nu_t * est_t.k / tubos.D_i
-        h_o = Nu_s * est_s.k / D_e
+        h_o, regimen_s, bd_final = _h_o_coraza(D_s, N_tt, mu_w, Re_s, phi_s, D_e)
         h_io = h_i * tubos.D_i / tubos.D_o
         T_w = (h_io * T_t_m + h_o * T_s_m) / (h_io + h_o)
         phi_t_n = (est_t.mu / mu_pared(por_tubos.fluido, T_w)) ** 0.14
-        phi_s_n = (est_s.mu / mu_pared(por_coraza.fluido, T_w)) ** 0.14
-        if abs(phi_t_n - phi_t) < 1e-9 and abs(phi_s_n - phi_s) < 1e-9:
-            phi_t, phi_s = phi_t_n, phi_s_n
+        mu_w_n = mu_pared(por_coraza.fluido, T_w)
+        phi_s_n = (est_s.mu / mu_w_n) ** 0.14
+        if (abs(phi_t_n - phi_t) < 1e-9
+                and abs(mu_w_n - mu_w) <= 1e-9 * max(mu_w, 1e-12)):
+            phi_t, phi_s, mu_w = phi_t_n, phi_s_n, mu_w_n
             break
-        phi_t, phi_s = phi_t_n, phi_s_n
+        phi_t, phi_s, mu_w = phi_t_n, phi_s_n, mu_w_n
     U = coeficiente_global(h_i, h_o, tubos.D_i, tubos.D_o, metal.k_m, R_fi, R_fo)
 
     # Caídas de presión acopladas tubos/coraza con el haz real (Kern, cap. 7).
     dp_t, f_t = caida_presion_tubos(
         Re_t, est_t.rho, v_t, tubos.L, tubos.D_i, tubos.n_pasos, phi_t,
         metal.epsilon)
-    dp_s, f_s = caida_presion_coraza(
-        Re_s, est_s.rho, G_s, D_s, D_e, N_baffles, phi_s, n_corazas)
+    if bd_final is not None:
+        dp_s = bd_final["dp_s"]
+        f_s = bd_final["f_i"]
+    else:
+        dp_s, f_s = caida_presion_coraza(
+            Re_s, est_s.rho, G_s, D_s, D_e, N_baffles, phi_s, n_corazas)
 
     # Area requerida con el U del haz instalado (coherente con A_real).
     A = q / (U * F * dT_lm)
@@ -1089,7 +1119,7 @@ def dimensionar(caliente: Stream, fria: Stream,
         Re_t=Re_t, Re_s=Re_s, v_t=v_t, v_s=v_s, D_e=D_e,
         f_t=f_t, f_s=f_s, dp_t=dp_t, dp_s=dp_s,
         iteraciones=it, regimen_tubo=regimen, regimen_coraza=regimen_s,
-        advertencias=adv,
+        metodo_coraza=metodo_coraza, advertencias=adv,
     )
 
     # --- Seleccion de pasos por ventana de velocidad (Kern) -----------------
@@ -1110,7 +1140,7 @@ def dimensionar(caliente: Stream, fria: Stream,
                     replace(tubos, n_pasos=np_cand), coraza,
                     lado_tubos=lado_tubos, U_inicial=U_inicial, tol=tol,
                     max_iter=max_iter, holgura_haz=holgura_haz,
-                    _busca_pasos=False,
+                    _busca_pasos=False, metodo_coraza=metodo_coraza,
                 )
             except ErrorDiseno:
                 continue
@@ -1154,7 +1184,9 @@ def aviso_tipo_carcasa(tipo: str) -> List[str]:
         avisos.append(
             f"Coraza tipo {tipo} (flujo partido/dividido): Kern no calibró sus "
             "correlaciones para este patrón. La corrección F = 1 es "
-            "conservadora y la caída de presión es mucho menor que en una E; "
+            "aproximada: sin la corrección de Bowman el F real puede ser "  
+            "inferior a 1 y el área quedaría corta (no es una cota conservadora); "  
+            "la caída de presión es mucho menor que en una E; "
             "para un diseño real use análisis de corrientes (Bell-Delaware)."
         )
     elif tipo == "K":

@@ -47,6 +47,7 @@ from src.thermo.sizing import (
     nusselt_coraza, nusselt_tubos, resistencia_ensuciamiento,
     validar_temperatura,
 )
+from src.thermo.bell_delaware import lado_coraza_bell_delaware
 
 db = ThermoDatabase()
 
@@ -179,7 +180,8 @@ def _cierra_balance(caliente: Stream, fria: Stream, T_c_out: float,
 # =============================================================================
 def _coeficientes(geom: ExchangerGeometry, por_tubos: Stream, por_coraza: Stream,
                   T_t_m: float, T_s_m: float, D_e: float,
-                  tol: float = 1e-5, max_iter: int = 15
+                  tol: float = 1e-5, max_iter: int = 15,
+                  metodo_coraza: str = "kern"
                   ) -> Tuple[float, float, float, float, float, float, float,
                              str, str, float, float, float, float]:
     """
@@ -211,18 +213,31 @@ def _coeficientes(geom: ExchangerGeometry, por_tubos: Stream, por_coraza: Stream
     phi_t = phi_s = 1.0
     U = h_i = h_o = 0.0
     regimen = regimen_s = ""
+    mu_w = est_s.mu
+    N_b_geo = max(int(math.floor(tb.L / geom.coraza.B + 1e-9)) - 1, 0)
+    bd = None
     for _ in range(40):
         Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tb.D_i, tb.L, phi_t,
                                  calentando=(T_t_m < T_s_m))
-        Nu_s, regimen_s = nusselt_coraza(Re_s, est_s.Pr, phi_s, D_e,
-                                         geom.coraza.B)
         h_i = Nu_t * est_t.k / tb.D_i
-        h_o = Nu_s * est_s.k / D_e
+        if metodo_coraza == "bell_delaware":
+            bd = lado_coraza_bell_delaware(
+                por_coraza.m_dot, est_s.rho, est_s.mu, est_s.cp, est_s.k,
+                mu_w, geom.D_s, tb.D_o, tb.P_T, geom.coraza.B, tb.layout,
+                geom.N_tt, N_b_geo, geom.coraza.corte_baffle, tb.L)
+            h_o = bd["h_o"]
+            regimen_s = ("turbulento" if bd["Re"] >= 2.0e3
+                         else ("laminar" if bd["Re"] < 100.0 else "transicion"))
+        else:
+            Nu_s, regimen_s = nusselt_coraza(Re_s, est_s.Pr, phi_s, D_e,
+                                             geom.coraza.B)
+            h_o = Nu_s * est_s.k / D_e
 
         h_io = h_i * tb.D_i / tb.D_o
         T_w = (h_io * T_t_m + h_o * T_s_m) / (h_io + h_o)
         phi_t_n = (est_t.mu / mu_pared(por_tubos.fluido, T_w)) ** 0.14
-        phi_s_n = (est_s.mu / mu_pared(por_coraza.fluido, T_w)) ** 0.14
+        mu_w_n = mu_pared(por_coraza.fluido, T_w)
+        phi_s_n = (est_s.mu / mu_w_n) ** 0.14
 
         U_new = coeficiente_global(h_i, h_o, tb.D_i, tb.D_o,
                                    metal.k_m, R_fi, R_fo)
@@ -238,9 +253,9 @@ def _coeficientes(geom: ExchangerGeometry, por_tubos: Stream, por_coraza: Stream
             )
         converge = (abs(U_new - U) / U_new < tol
                     and abs(phi_t_n - phi_t) < 1e-9
-                    and abs(phi_s_n - phi_s) < 1e-9)
+                    and abs(mu_w_n - mu_w) <= 1e-9 * max(mu_w, 1e-12))
         U = U_new
-        phi_t, phi_s = phi_t_n, phi_s_n
+        phi_t, phi_s, mu_w = phi_t_n, phi_s_n, mu_w_n
         if converge:
             break
 
@@ -248,15 +263,19 @@ def _coeficientes(geom: ExchangerGeometry, por_tubos: Stream, por_coraza: Stream
     N_baffles = max(int(math.floor(geom.tubos.L / geom.coraza.B + 1e-9)) - 1, 0)
     dp_t, f_t = caida_presion_tubos(
         Re_t, est_t.rho, v_t, tb.L, tb.D_i, tb.n_pasos, phi_t, metal.epsilon)
-    dp_s, f_s = caida_presion_coraza(
-        Re_s, est_s.rho, G_s, geom.D_s, D_e, N_baffles, phi_s, geom.n_corazas)
+    if metodo_coraza == "bell_delaware" and bd is not None:
+        dp_s, f_s = bd["dp_s"], bd["f_i"]
+    else:
+        dp_s, f_s = caida_presion_coraza(
+            Re_s, est_s.rho, G_s, geom.D_s, D_e, N_baffles, phi_s,
+            geom.n_corazas)
     return (U, h_i, h_o, Re_t, Re_s, v_t, v_s, regimen, regimen_s,
             dp_t, dp_s, f_t, f_s)
 
 
 def _evaluar_punto(T_c_out: float, caliente: Stream, fria: Stream,
                    geom: ExchangerGeometry, lado_tubos: str,
-                   D_e: float) -> _Punto:
+                   D_e: float, metodo_coraza: str = "kern") -> _Punto:
     """Resuelve todo el estado del equipo para un T_co supuesto."""
     q, T_h_out, C_c, C_h = _cierra_balance(caliente, fria, T_c_out)
     T_h_m = 0.5 * (caliente.T_in + T_h_out)
@@ -269,7 +288,8 @@ def _evaluar_punto(T_c_out: float, caliente: Stream, fria: Stream,
 
     (U, h_i, h_o, Re_t, Re_s, v_t, v_s, regimen, regimen_s,
      dp_t, dp_s, f_t, f_s) = _coeficientes(
-        geom, por_tubos, por_coraza, T_t_m, T_s_m, D_e)
+        geom, por_tubos, por_coraza, T_t_m, T_s_m, D_e,
+        metodo_coraza=metodo_coraza)
 
     dT_lm = lmtd_contracorriente(caliente.T_in, T_h_out, fria.T_in, T_c_out)
     F = factor_correccion_F(caliente.T_in, T_h_out, fria.T_in, T_c_out,
@@ -327,7 +347,7 @@ def _buscar_raiz(f: Callable[[float], float], lo: float, hi: float,
 # =============================================================================
 def evaluar(caliente: Stream, fria: Stream, geom: ExchangerGeometry,
             lado_tubos: str = "frio", tol_T: float = 0.01,
-            max_iter: int = 60) -> RatingResult:
+            max_iter: int = 60, metodo_coraza: str = "kern") -> RatingResult:
     """
     Evalua (rating) un intercambiador existente en condiciones dadas.
 
@@ -407,7 +427,8 @@ def evaluar(caliente: Stream, fria: Stream, geom: ExchangerGeometry,
 
     def residual(T_co: float) -> float:
         try:
-            p = _evaluar_punto(T_co, caliente, fria, geom, lado_tubos, D_e)
+            p = _evaluar_punto(T_co, caliente, fria, geom, lado_tubos, D_e,
+                                   metodo_coraza)
         except ValueError:
             # T_co inalcanzable para este arreglo (cruce de temperaturas o
             # limite del factor F): empuja la busqueda hacia abajo.
@@ -449,13 +470,15 @@ def evaluar(caliente: Stream, fria: Stream, geom: ExchangerGeometry,
             "El equipo alcanza el limite termodinamico (efectividad ~ 1): "
             "sobra area y el resultado queda pegado al pinch."
         )
-        punto = _evaluar_punto(hi, caliente, fria, geom, lado_tubos, D_e)
+        punto = _evaluar_punto(hi, caliente, fria, geom, lado_tubos, D_e,
+                             metodo_coraza)
         it = 0
     else:
         T_sol, it = _buscar_raiz(residual, lo, hi, f_lo, f_hi, tol_T, max_iter)
         punto = cache[0] if (cache[0] and
                              abs(cache[0].T_c_out - T_sol) < 1e-9) else \
-            _evaluar_punto(T_sol, caliente, fria, geom, lado_tubos, D_e)
+            _evaluar_punto(T_sol, caliente, fria, geom, lado_tubos, D_e,
+                               metodo_coraza)
 
     # La solucion tambien debe respetar la ventana de fase de AMBOS fluidos.
     validar_temperatura(caliente.fluido, punto.T_h_out,

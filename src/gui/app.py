@@ -66,6 +66,7 @@ VALORES_DEFECTO: Dict[str, Any] = {
     "p_coraza_bar": 10.0, "p_tubos_bar": 10.0,
     "mat_carcasa": "Acero al carbono", "corrosion_mm": 3.2, "d_perno_mm": 19.05,
     "n_tt": 500, "d_s_mm": 630.0,
+    "metodo_coraza": "Kern (clásico)",
 }
 
 # Ayudas del modo de trabajo (paso 1 de la hoja de diseño).
@@ -594,6 +595,10 @@ class Aplicacion(ctk.CTk):
             m, 2, "Cabezal trasero", ctrl.CABEZAL_TRASERO, valor="M",
             ayuda="L/M/N (espejo fijo) · P/S/T/W (flotantes) · U (haz en U).",
             comando=self._actualizar_designacion_tema))
+        f.add("metodo_coraza", CampoLista(
+            m, 4, "Método coraza", ctrl.METODOS_CORAZA_UI, valor="Kern (clásico)",
+            ayuda="Kern: correlación clásica (cap. 7). Bell-Delaware: corrige "
+                  "fugas y bypass con Jc, Jl, Jb, Jr (más riguroso)."))
         rotulo(m, text="Designación TEMA:", style="Nota.TLabel"
                   ).grid(row=3, column=0, sticky="w", padx=(6, 8), pady=(6, 0))
         self.lbl_designacion = rotulo(
@@ -1476,6 +1481,8 @@ AYUDA = [
      "aceptado hasta 100 °C como líquido presurizado, tal como trabajan los "
      "ejercicios de referencia de la literatura."),
     ("11. Régimen de flujo e incertidumbre",
+     "El lado coraza puede calcularse con Kern (clásico) o con Bell-Delaware "
+     "(factores Jc, Jl, Jb y Jr sobre el banco ideal; más riguroso). "
      "Las correlaciones cubren los tres regímenes: Hausen (1959) para "
      "laminar en tubos, Gnielinski (1976) para transición y turbulento "
      "(con respaldo de Dittus-Boelter), y en coraza el método de Kern con "
