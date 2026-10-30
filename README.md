@@ -24,7 +24,7 @@ Para comprobar que todo funciona correctamente:
 py verificar.py
 ```
 
-Ese comando ejecuta 153 pruebas sobre todas las fases y termina diciendo
+Ese comando ejecuta 165 pruebas sobre todas las fases y termina diciendo
 `TODO CORRECTO` o enumerando las fallas.
 
 ---
