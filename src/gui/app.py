@@ -33,6 +33,7 @@ if __package__ in (None, ""):                 # ejecución directa del archivo
 from src.gui import controller as ctrl
 from src.gui import drawings, io_state
 from src.core.errores import ErrorDiseno
+from src.core import marca
 import customtkinter as ctk
 
 from src.gui.widgets import (COLOR_ACENTO, COLOR_BORDE, COLOR_CARMESI,
@@ -1411,9 +1412,11 @@ class Aplicacion(ctk.CTk):
             "Intercambiador de Tubos y Coraza\n"
             "Software educativo de diseño de intercambiadores de calor\n"
             "de tubos y coraza.\n\n"
-            "• Térmico: Método de Kern (LMTD + factor F).\n"
+            "• Térmico: Kern (LMTD + factor F) y Bell-Delaware opcional\n"
+            "  en el lado coraza (factores Jc, Jl, Jb, Jr).\n"
             "• Mecánico: estándar TEMA Clase C.\n"
             "• Base termofísica propia (10 fluidos, 5 materiales).\n\n"
+            f"• Huella de autenticidad: {marca.huella()}\n\n"
             "© 2026 Diego Nicolás Bohórquez Barón\n"
             "Todos los derechos reservados.\n"
             "Prohibida la copia o presentación de este trabajo, total o\n"
@@ -1491,7 +1494,22 @@ AYUDA = [
      "correlaciones de forma continua. La banda de incertidumbre estimada "
      "sobre U es ±15 % en turbulento, ±20 % en transición y ±25 % en "
      "laminar. En los regímenes no turbulentos contraste el resultado con "
-     "Bell-Delaware, ε-NTU o datos de servicio antes de fabricar."),
+     "datos de servicio, ε-NTU o literatura antes de fabricar."),
+    ("12. Método de coraza: Kern y Bell-Delaware",
+     "En Design, el campo «Método coraza» elige cómo se calcula el lado "
+     "coraza. Kern (por defecto) usa las correlaciones clásicas del capítulo "
+     "7 (LMTD con factor F). Bell-Delaware descompone el flujo del banco en "
+     "cinco corrientes (cruzado ideal, fugas deflector-coraza y "
+     "deflector-tubo, bypass haz-coraza y partición de paso) y corrige el "
+     "banco ideal con los factores Jc, Jl, Jb y Jr; la caída de presión se "
+     "calcula en tres componentes (cruzado, ventana y extremos). Ambos "
+     "métodos son monofásicos: no cubren condensación ni ebullición. El "
+     "método elegido se guarda dentro del proyecto .bb, así que al abrir "
+     "un archivo se recupera exactamente con el que se calculó. En los "
+     "ejemplos de la literatura, Bell-Delaware da h_o entre 0,87 y 1,11 "
+     "veces el de Kern y caídas de presión entre 30 y 60 % menores; en el "
+     "caso de Tan y Fok acerca el resultado al artículo publicado "
+     "(U 433 frente a 447 W/m2K)."),
 ]
 
 
