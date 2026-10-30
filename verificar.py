@@ -448,10 +448,17 @@ def probar_bell_delaware() -> None:
           f"(los metodos deben coincidir en orden de magnitud)")
     check(r_bd.metodo_coraza == "bell_delaware" and r_kern.metodo_coraza == "kern",
           "el resultado registra el metodo de coraza usado")
+    from src.thermo.sizing import resolver_metodo_coraza
+    check(resolver_metodo_coraza("auto", 1.0e5) == "bell_delaware",
+          "auto elige Bell-Delaware cuando Taborek cubre el Re de coraza")
+    check(resolver_metodo_coraza("auto", 1.0e7) == "kern",
+          "auto cae a Kern fuera de la tabla de Taborek")
+    check(resolver_metodo_coraza("kern", 1.0e5) == "kern",
+          "un metodo explicito se respeta tal cual")
     r_def = ctrl.correr_sizing(dict(base))
-    check(abs(r_def.U - r_kern.U) < 1e-9 and r_def.N_tt == r_kern.N_tt,
-          f"sin metodo declarado el sizing sigue siendo Kern (U = {r_def.U:.1f} "
-          f"W/m2K identico; sin regresion tras integrar Bell-Delaware)")
+    check(abs(r_def.U - r_bd.U) < 1e-9 and r_def.metodo_coraza == "bell_delaware",
+          f"sin metodo declarado el sizing usa el automatico: Bell-Delaware "
+          f"(U = {r_def.U:.1f} W/m2K identico al explicito)")
     check(r_bd.U != r_kern.U,
           f"Bell-Delaware produce un resultado distinto de Kern "
           f"(U = {r_bd.U:.1f} vs {r_kern.U:.1f} W/m2K)")

@@ -78,6 +78,23 @@ INCERTIDUMBRE_CORAZA = {
 }
 
 
+def resolver_metodo_coraza(metodo_coraza: str, Re_s: float) -> str:
+    """
+    Resuelve el metodo efectivo del lado coraza.
+
+    'auto' (Automatico, recomendado) elige Bell-Delaware mientras el
+    Reynolds de coraza quede dentro de la tabla de Taborek
+    (1 <= Re_s <= 1e6); fuera de ese rango cae a Kern, que resiste mejor
+    la extrapolacion. Un metodo explicito ('kern' o 'bell_delaware') se
+    respeta tal cual: sirve para comparar o para reproducir el metodo
+    clasico del curso.
+    """
+    m = str(metodo_coraza or "kern").strip().lower()
+    if m != "auto":
+        return m if m in ("kern", "bell_delaware") else "kern"
+    return "bell_delaware" if 1.0 <= Re_s <= 1.0e6 else "kern"
+
+
 # =============================================================================
 # 2. CONTENEDORES DE DATOS
 # =============================================================================
@@ -859,7 +876,7 @@ def dimensionar(caliente: Stream, fria: Stream,
     def _h_o_coraza(D_s_x: float, N_tt_x: float, mu_w: float,
                     Re_s_x: float, phi_s_x: float, D_e_x: float):
         "h_o del lado coraza segun el metodo elegido (Kern o Bell-Delaware)."
-        if metodo_coraza == "bell_delaware":
+        if resolver_metodo_coraza(metodo_coraza, Re_s_x) == "bell_delaware":
             bd = lado_coraza_bell_delaware(
                 por_coraza.m_dot, est_s.rho, est_s.mu, est_s.cp, est_s.k,
                 mu_w, D_s_x, tubos.D_o, tubos.P_T, coraza.B, tubos.layout,
@@ -1071,7 +1088,7 @@ def dimensionar(caliente: Stream, fria: Stream,
         )
 
     # --- Regimen de flujo e incertidumbre de los coeficientes ---------------
-    metodo = "bell_delaware" if metodo_coraza == "bell_delaware" else "kern"
+    metodo = resolver_metodo_coraza(metodo_coraza, Re_s)
     coraza_txt = ("Bell-Delaware (factores Jc, Jl, Jb y Jr sobre el banco "
                   "ideal)" if metodo == "bell_delaware"
                   else "Kern laminar con dependencia de Graetz")
@@ -1109,7 +1126,8 @@ def dimensionar(caliente: Stream, fria: Stream,
             f"la banda la fija el lado {fijante}). {cierre}"
         )
 
-    if not RE_KERN_MIN <= Re_s <= RE_KERN_MAX and regimen_s == "turbulento":
+    if (metodo == "kern" and not RE_KERN_MIN <= Re_s <= RE_KERN_MAX
+            and regimen_s == "turbulento"):
         adv.append(
             f"Re de coraza = {Re_s:,.0f} fuera del rango de validez de la "
             f"correlacion de Kern ({RE_KERN_MIN:,.0f} - {RE_KERN_MAX:,.0f}). "
@@ -1145,7 +1163,8 @@ def dimensionar(caliente: Stream, fria: Stream,
         Re_t=Re_t, Re_s=Re_s, v_t=v_t, v_s=v_s, D_e=D_e,
         f_t=f_t, f_s=f_s, dp_t=dp_t, dp_s=dp_s,
         iteraciones=it, regimen_tubo=regimen, regimen_coraza=regimen_s,
-        metodo_coraza=metodo_coraza, advertencias=adv,
+        metodo_coraza=resolver_metodo_coraza(metodo_coraza, Re_s),
+        advertencias=adv,
     )
 
     # --- Seleccion de pasos por ventana de velocidad (Kern) -----------------

@@ -67,7 +67,7 @@ VALORES_DEFECTO: Dict[str, Any] = {
     "p_coraza_bar": 10.0, "p_tubos_bar": 10.0,
     "mat_carcasa": "Acero al carbono", "corrosion_mm": 3.2, "d_perno_mm": 19.05,
     "n_tt": 500, "d_s_mm": 630.0,
-    "metodo_coraza": "Kern (clásico)",
+    "metodo_coraza": "Automático (recomendado)",
 }
 
 # Ayudas del modo de trabajo (paso 1 de la hoja de diseño).
@@ -602,7 +602,8 @@ class Aplicacion(ctk.CTk):
             ayuda="L/M/N (espejo fijo) · P/S/T/W (flotantes) · U (haz en U).",
             comando=self._actualizar_designacion_tema))
         f.add("metodo_coraza", CampoLista(
-            m, 4, "Método coraza", ctrl.METODOS_CORAZA_UI, valor="Kern (clásico)",
+            m, 4, "Método coraza", ctrl.METODOS_CORAZA_UI,
+            valor="Automático (recomendado)",
             ayuda="Kern: correlación clásica (cap. 7). Bell-Delaware: corrige "
                   "fugas y bypass con Jc, Jl, Jb, Jr (más riguroso)."))
         rotulo(m, text="Designación TEMA:", style="Nota.TLabel"
@@ -1505,8 +1506,11 @@ AYUDA = [
      "o literatura antes de fabricar."),
     ("12. Método de coraza: Kern y Bell-Delaware",
      "En Design, el campo «Método coraza» elige cómo se calcula el lado "
-     "coraza. Kern (por defecto) usa las correlaciones clásicas del capítulo "
-     "7 (LMTD con factor F). Bell-Delaware descompone el flujo del banco en "
+     "coraza. «Automático» (recomendado) aplica Bell-Delaware mientras el "
+     "Reynolds de coraza esté cubierto por la tabla de Taborek (1–1e6) y "
+     "vuelve a Kern fuera de ese rango; el método realmente usado queda "
+     "registrado en el resultado y en el proyecto .bb. Kern usa las "
+     "correlaciones clásicas del capítulo 7 (LMTD con factor F). Bell-Delaware descompone el flujo del banco en "
      "cinco corrientes (cruzado ideal, fugas deflector-coraza y "
      "deflector-tubo, bypass haz-coraza y partición de paso) y corrige el "
      "banco ideal con los factores Jc, Jl, Jb y Jr; la caída de presión se "

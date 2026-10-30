@@ -41,6 +41,7 @@ except ImportError:  # ejecucion directa: `python src/thermo/rating.py`
 
 from src.thermo.sizing import (
     INCERTIDUMBRE_CORAZA, INCERTIDUMBRE_U, RE_KERN_MAX, RE_KERN_MIN,
+    resolver_metodo_coraza,
     V_CORAZA_MAX, V_CORAZA_MIN,
     V_TUBO_MAX, V_TUBO_MIN, ShellGeometry, Stream, TubeGeometry,
     aviso_tipo_carcasa, caida_presion_coraza, caida_presion_tubos,
@@ -118,6 +119,7 @@ class RatingResult:
     regimen_tubo: str
     regimen_coraza: str
     residual: float          # Cierre del balance |q - U*A*F*LMTD| [W]
+    metodo_coraza: str = "kern"   # metodo realmente usado
     advertencias: List[str] = field(default_factory=list)
 
 
@@ -218,11 +220,12 @@ def _coeficientes(geom: ExchangerGeometry, por_tubos: Stream, por_coraza: Stream
     mu_w = est_s.mu
     N_b_geo = max(int(math.floor(tb.L / geom.coraza.B + 1e-9)) - 1, 0)
     bd = None
+    metodo = resolver_metodo_coraza(metodo_coraza, Re_s)
     for _ in range(40):
         Nu_t, regimen = nusselt_tubos(Re_t, est_t.Pr, tb.D_i, tb.L, phi_t,
                                  calentando=(T_t_m < T_s_m))
         h_i = Nu_t * est_t.k / tb.D_i
-        if metodo_coraza == "bell_delaware":
+        if metodo == "bell_delaware":
             bd = lado_coraza_bell_delaware(
                 por_coraza.m_dot, est_s.rho, est_s.mu, est_s.cp, est_s.k,
                 mu_w, geom.D_s, tb.D_o, tb.P_T, geom.coraza.B, tb.layout,
@@ -265,7 +268,7 @@ def _coeficientes(geom: ExchangerGeometry, por_tubos: Stream, por_coraza: Stream
     N_baffles = max(int(math.floor(geom.tubos.L / geom.coraza.B + 1e-9)) - 1, 0)
     dp_t, f_t = caida_presion_tubos(
         Re_t, est_t.rho, v_t, tb.L, tb.D_i, tb.n_pasos, phi_t, metal.epsilon)
-    if metodo_coraza == "bell_delaware" and bd is not None:
+    if metodo == "bell_delaware" and bd is not None:
         dp_s, f_s = bd["dp_s"], bd["f_i"]
     else:
         dp_s, f_s = caida_presion_coraza(
@@ -533,7 +536,7 @@ def evaluar(caliente: Stream, fria: Stream, geom: ExchangerGeometry,
         aviso = chequeo_saturacion(flu, T_pico)
         if aviso:
             adv.append(aviso)
-    metodo = "bell_delaware" if metodo_coraza == "bell_delaware" else "kern"
+    metodo = resolver_metodo_coraza(metodo_coraza, punto.Re_s)
     coraza_txt = ("Bell-Delaware (factores Jc, Jl, Jb y Jr sobre el banco "
                   "ideal)" if metodo == "bell_delaware"
                   else "Kern laminar con dependencia de Graetz")
@@ -588,6 +591,7 @@ def evaluar(caliente: Stream, fria: Stream, geom: ExchangerGeometry,
         iteraciones=it, regimen_tubo=punto.regimen,
         regimen_coraza=punto.regimen_s, residual=residuo,
         advertencias=adv,
+        metodo_coraza=resolver_metodo_coraza(metodo_coraza, punto.Re_s),
     )
 
 

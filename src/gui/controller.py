@@ -335,16 +335,21 @@ def _alertas_delta_p(d: Dict[str, Any], r) -> None:
                 f"longitud). Cálculo según {ref}.")
 
 
-METODOS_CORAZA = ("kern", "bell_delaware")
-METODOS_CORAZA_UI = ("Kern (clásico)", "Bell-Delaware")
+METODOS_CORAZA = ("kern", "bell_delaware", "auto")
+METODOS_CORAZA_UI = ("Automático (recomendado)", "Kern (clásico)",
+                     "Bell-Delaware")
 
 
 def _metodo_coraza(d: Dict[str, Any]) -> str:
     """Metodo de coraza pedido en el proyecto (por defecto Kern)."""
-    m = str(d.get("metodo_coraza") or "kern").strip().lower()
+    m = str(d.get("metodo_coraza") or "auto").strip().lower()
     if "bell" in m:
         return "bell_delaware"
-    return m if m in METODOS_CORAZA else "kern"
+    if "auto" in m or "autom" in m:
+        return "auto"
+    if "kern" in m:
+        return "kern"
+    return m if m in METODOS_CORAZA else "auto"
 
 
 def correr_sizing(d: Dict[str, Any]):
