@@ -34,6 +34,7 @@
 \fancyhead[R]{\small\color{gristexto}Intercambiador de Tubos y Coraza}
 \fancyfoot[C]{\small\color{gristexto}\thepage}
 
+\emergencystretch=3em
 \begin{document}
 
 % --- Portada ---------------------------------------------------------------
@@ -132,45 +133,106 @@ versiones, criterios de corrección y la verificación final de resultados.
 \section{Bitácora de interacciones (principales prompts)}
 
 A continuación se registran las interacciones efectivamente realizadas
-durante el desarrollo. Se presentan los \textbf{prompts principales} en su
-forma depurada —fiel al contenido y la intención originales, redactados para
-su lectura técnica— junto con el resultado y la verificación aplicada.
+durante el desarrollo, organizadas por el orden natural del trabajo sobre el
+código: \textbf{construcción}, \textbf{edición e integración} y
+\textbf{verificación y corrección}. Los prompts se presentan en su forma
+depurada ---fieles al contenido y la intención originales, redactados para su
+lectura técnica--- junto con el resultado y la verificación aplicada.
 
-El desarrollo sigui\'o el orden natural de construcci\'on del software. Los
-prompts principales ---depurados para su lectura t\'ecnica pero fieles a la
-intenci\'on y las decisiones del creador--- fueron:
-
+\textbf{A. Fase de construcción del código.}
 \begin{enumerate}
-\item \textbf{Base de datos termof\'isica.} «Construir la base de datos del
-programa: los fluidos de trabajo (densidad, viscosidad din\'amica, calor
-espec\'ifico y conductividad t\'ermica en funci\'on de la temperatura, con su
+\item \textbf{Base de datos termofísica.} «Construir la base de datos del
+programa: los fluidos de trabajo (densidad, viscosidad dinámica, calor
+específico y conductividad térmica en función de la temperatura, con su
 ventana de validez declarada) y los materiales (los cinco de la norma TEMA
 Clase C, con conductividad, rugosidad y resistencia de ensuciamiento), todo
 en unidades SI y con la fuente de cada dato documentada.»
 \item \textbf{Estructura sizing vs rating.} «Separar estrictamente el
-c\'alculo en dos m\'odulos: \emph{sizing} (dimensionar un equipo nuevo,
+cálculo en dos módulos: \emph{sizing} (dimensionar un equipo nuevo,
 iterando sobre $U$) y \emph{rating} (evaluar un equipo ya construido,
 resolviendo las temperaturas de salida). Los datos de entrada y los
 resultados deben quedar claramente diferenciados para que el usuario no
-confunda cu\'ando se usa uno u otro.» \emph{(El creador fij\'o adem\'as que
+confunda cuándo se usa uno u otro.» \emph{(El creador fijó además que
 la interfaz pregunte primero el modo de trabajo ---sizing, rating u otras---
 y que los ejemplos se dividan en esas dos familias.)}
-\item \textbf{Correlaciones del m\'etodo de Kern.} «Implementar las
-correlaciones de Kern para el c\'alculo t\'ermico e hidr\'aulico ---balance
-de energ\'ia, LMTD con factor $F$ de Bowman, Nusselt en tubos y coraza,
-coeficiente global por resistencias en serie y ca\'idas de presi\'on
-(Ecs.~7.43, 7.44 y 7.45/7.46)--- junto con los criterios mec\'anicos de TEMA
-Clase C, citando cada ecuaci\'on y su rango de validez.»
-\item \textbf{Interfaz amigable.} «Dise\~nar una interfaz gr\'afica agradable
-y f\'acil de usar: formulario separado por modo de trabajo (datos de sizing y
-de rating en bloques distintos), l\'imites de $\Delta p$ permisibles dentro
-del sizing, un checklist de verificaci\'on del dise\~no adaptado al modo,
-dibujos t\'ecnicos vinculados a la geometr\'ia calculada, mensajes de error
+\item \textbf{Correlaciones del método de Kern.} «Implementar las
+correlaciones de Kern para el cálculo térmico e hidráulico ---balance
+de energía, LMTD con factor $F$ de Bowman, Nusselt en tubos y coraza,
+coeficiente global por resistencias en serie y caídas de presión
+(Ecs.~7.43, 7.44 y 7.45/7.46)--- junto con los criterios mecánicos de TEMA
+Clase C, citando cada ecuación y su rango de validez.»
+\item \textbf{Interfaz amigable.} «Diseñar una interfaz gráfica agradable
+y fácil de usar: formulario separado por modo de trabajo (datos de sizing y
+de rating en bloques distintos), límites de $\Delta p$ permisibles dentro
+del sizing, un checklist de verificación del diseño adaptado al modo,
+dibujos técnicos vinculados a la geometría calculada, mensajes de error
 educativos y guardado de proyectos \texttt{.bb}.»
-\item \textbf{Optimizaci\'on y entrega.} «Optimizar el programa (cierre
-consistente del haz real, estabilidad num\'erica) y la documentaci\'on,
-verificarlo con una suite de pruebas autom\'aticas y empaquetarlo como
+\item \textbf{Diseño mecánico TEMA y planos.} «Implementar el diseño
+mecánico Clase C (carcasa, cabezales, deflectores, espesores y criterios de
+boquilla) y las vistas paramétricas acotadas, vinculadas a la geometría
+calculada, para que cada plano se redibuje solo con los datos del
+proyecto.»
+\item \textbf{Persistencia y ejemplos.} «Implementar guardar y abrir
+proyectos con los campos obligatorios del formulario, y dejar los ejemplos
+del programa en ese mismo formato para que puedan cargarse y recalcularse
+sin edición.»
+\item \textbf{Suite de pruebas automáticas.} «Cubrir con una suite la base
+termofísica, el cálculo térmico e hidráulico, el diseño mecánico, el manejo
+de errores educativo y la interfaz, de modo que ninguna edición del código
+se acepte sin pasarla.»
+\item \textbf{Optimización y entrega.} «Optimizar el programa (cierre
+consistente del haz real, estabilidad numérica) y la documentación,
+verificarlo con una suite de pruebas automáticas y empaquetarlo como
 ejecutable autocontenido de Windows.»
+\end{enumerate}
+
+\textbf{B. Fase de edición e integración del código.}
+\begin{enumerate}\setcounter{enumi}{8}
+\item \textbf{Integración de versiones.} «Lo único que tienes que hacer es
+poner la que yo tenía ---dibujos de todas las carcasas y cabezales, mejores
+mensajes de advertencia--- y agregarle las novedades de la v2.1, no
+reemplazarlo. Mucho ojo.» \emph{(Resultado: la versión del creador quedó
+como base y las novedades se añadieron con parches quirúrgicos módulo por
+módulo; ningún archivo propio se sustituyó en bloque.)}
+\item \textbf{Propiedad intelectual.} «En todo lo que tenga código deja
+muy discretamente que es de propiedad de Diego Nicolás Bohórquez Barón.»
+\emph{(Resultado: marca discreta en cada archivo fuente,
+\texttt{LICENSE.txt}, la ventana «Acerca de» y la firma de los
+artefactos.)}
+\item \textbf{Modos estrictos.} «Si entro a sizing que solo pueda hacer
+sizing, y si entro a rating que solo pueda hacer rating.»
+\emph{(Resultado: la interfaz habilita únicamente los campos del modo
+activo y valida las acciones por modo.)}
+\item \textbf{Estilo visual.} «Maneja contrastes de colores como morados,
+carmesí y naranjas; algunas letras siguen siendo bastante pequeñas; elimina
+los emojis, que parezca menos IA y sea moderno.» \emph{(Resultado: paleta
+morado--carmesí--naranja, tipografía ampliada, sin emojis y acabado
+moderno.)}
+\item \textbf{Ayuda y mensajes educativos.} «En la pestaña Help sigue
+saliendo lo del régimen laminar; actualízala para que refleje las
+correlaciones actuales.» \emph{(Resultado: ayuda reescrita con Hausen,
+Gnielinski y Kern--Graetz, bandas de incertidumbre por régimen y la
+excepción del metanol presurizado.)}
+\item \textbf{Control de deflectores.} «Agregar el control del
+espaciamiento de deflectores, con la recomendación $0{,}3$--$1\,D_s$ y un
+botón para el valor intermedio.» \emph{(Resultado: barra de espaciamiento y
+botón $\frac{1}{2}D_s$ en el diseño mecánico, con validación del rango
+TEMA.)}
+\item \textbf{Organización de la entrega.} «Los anexos van en la carpeta
+04, no en otras partes.» \emph{(Resultado: entrega estructurada en
+\texttt{01\_codigo\_fuente}, \texttt{02\_ejecutable},
+\texttt{03\_documento} y \texttt{04\_bitacora\_ia}, con cada artefacto en
+su carpeta.)}
+\item \textbf{Actualización del documento con el LaTeX del equipo.} «Con
+este LaTeX reemplaza el documento final; puedes eliminar la carpeta de
+imágenes viejas. Usa tectonic para revisar que no se corran imágenes y
+tablas.» \emph{(Resultado: documento sustituido, imágenes nuevas
+incorporadas y compilación verificada sin errores ni desbordes de figuras y
+tablas.)}
+\end{enumerate}
+
+\textbf{C. Fase de verificación y corrección del código.}
+\begin{enumerate}\setcounter{enumi}{16}
 \item \textbf{Verificación con ejercicios de la literatura.} «Sustituir los
 casos de servicio por ocho ejercicios resueltos de la literatura ---cuatro
 de \emph{sizing} y cuatro de \emph{rating}---, compararlos en el documento
@@ -320,8 +382,8 @@ presentar— fueron del creador en todas las interacciones registradas.
 \end{itemize}
 
 \vspace{0.6cm}
-{\color{acento}\rule{\linewidth}{2pt}}\\[0.3cm]
-{\small\color{gristexto} Documento generado como anexo de trazabilidad del uso
+\noindent{\color{acento}\rule{\linewidth}{2pt}}\\[0.3cm]
+{\small\color{gristexto}\raggedright Documento generado como anexo de trazabilidad del uso
 de inteligencia artificial. Proyecto: Intercambiador de Tubos y Coraza
 (método de Kern / TEMA Clase C).}
 
