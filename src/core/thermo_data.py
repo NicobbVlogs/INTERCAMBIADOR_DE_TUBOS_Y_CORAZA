@@ -193,10 +193,10 @@ class _FluidDef:
 _FLUIDS: Dict[str, _FluidDef] = {
     "agua": _FluidDef(
         "Agua", "liquido", 273.15, 373.15,
-        "Liquido a 1 atm: hierve exactamente a 100 C. Este software no modela "
-        "presion de operacion ni cambio de fase, por lo que la ventana de agua "
-        "liquida TERMINA en 100 C (elegido por el usuario; el ajuste IAPWS "
-        "subyacente era valido hasta 180 C pero exigiria presurizar el equipo).",
+        "Líquido a 1 atm: hierve exactamente a 100 °C. Este software no modela "
+        "presión de operación ni cambio de fase, por lo que la ventana de agua "
+        "líquida TERMINA en 100 °C (elegido por el usuario; el ajuste IAPWS "
+        "subyacente era válido hasta 180 °C pero exigiría presurizar el equipo).",
         lambda T, P: _poly(T, 373.15, _W_RHO),
         lambda T, P: _poly(T, 373.15, _W_CP),
         lambda T, P: _poly(T, 373.15, _W_K),
@@ -204,8 +204,8 @@ _FLUIDS: Dict[str, _FluidDef] = {
     ),
     "vapor de agua": _FluidDef(
         "Vapor de agua", "gas", 373.15, 873.15,
-        "Vapor sobrecalentado a baja presion. rho por gas ideal (R = 461.5 J/kg.K); "
-        "por debajo de 373 K a 1 atm el agua es liquida.",
+        "Vapor sobrecalentado a baja presión. densidad por gas ideal (R = 461,5 J/(kg·K)); "
+        "por debajo de 373 K a 1 atm el agua es líquida.",
         lambda T, P: _rho_gas(T, P, M_H2O),
         lambda T, P: _poly(T, 600.0, _S_CP),
         lambda T, P: _poly(T, 600.0, _S_K),
@@ -221,7 +221,7 @@ _FLUIDS: Dict[str, _FluidDef] = {
     ),
     "etanol": _FluidDef(
         "Etanol", "liquido", 273.15, 348.15,
-        "Liquido. Punto de ebullicion normal: 78.4 C (351.5 K).",
+        "Líquido. Punto de ebullición normal: 78,4 °C (351,5 K).",
         lambda T, P: _poly(T, 313.15, _ET_RHO),
         lambda T, P: _poly(T, 313.15, _ET_CP),
         lambda T, P: _poly(T, 313.15, _ET_K),
@@ -229,11 +229,11 @@ _FLUIDS: Dict[str, _FluidDef] = {
     ),
     "metanol": _FluidDef(
         "Metanol", "liquido", 273.15, 373.15,
-        "Liquido (presurizado por encima del punto de ebullicion normal: "
-        "64.7 C / 337.8 K). La ventana cubre hasta 100 C como liquido a "
-        "presion, tal como trabajan los ejercicios de referencia de la "
-        "literatura (condensado a 95 C); contrastado con las propiedades "
-        "publicadas por Sinnott & Towler (Ej. 12.1) a 67.5 C dentro del 2 %.",
+        "Líquido (presurizado por encima del punto de ebullición normal: "
+        "64,7 °C / 337,8 K). La ventana cubre hasta 100 °C como líquido a "
+        "presión, tal como trabajan los ejercicios de referencia de la "
+        "literatura (condensado a 95 °C); contrastado con las propiedades "
+        "publicadas por Sinnott & Towler (Ej. 12.1) a 67,5 °C dentro del 2 %.",
         lambda T, P: _poly(T, 303.15, _ME_RHO),
         lambda T, P: _poly(T, 303.15, _ME_CP),
         lambda T, P: _poly(T, 303.15, _ME_K),
@@ -241,7 +241,7 @@ _FLUIDS: Dict[str, _FluidDef] = {
     ),
     "etilenglicol": _FluidDef(
         "Etilenglicol", "liquido", 273.15, 470.15,
-        "Liquido puro (100 %). Hierve a 197.3 C (470.4 K) a 1 atm; se usa como "
+        "Líquido puro (100 %). Hierve a 197,3 °C (470,4 K) a 1 atm; se usa como "
         "fluido caliente hasta ~190 C. Muy viscoso en frio: vigilar Re y dP.",
         lambda T, P: _poly(T, 323.15, _EG_RHO),
         lambda T, P: _poly(T, 323.15, _EG_CP),
@@ -250,7 +250,7 @@ _FLUIDS: Dict[str, _FluidDef] = {
     ),
     "benceno": _FluidDef(
         "Benceno", "liquido", 283.15, 353.15,
-        "Liquido. Congela a 5.5 C y hierve a 80.1 C (353.2 K) a 1 atm.",
+        "Líquido. Congela a 5,5 °C y hierve a 80,1 °C (353,2 K) a 1 atm.",
         lambda T, P: _poly(T, 318.15, _BZ_RHO),
         lambda T, P: _poly(T, 318.15, _BZ_CP),
         lambda T, P: _poly(T, 318.15, _BZ_K),
@@ -258,7 +258,7 @@ _FLUIDS: Dict[str, _FluidDef] = {
     ),
     "tolueno": _FluidDef(
         "Tolueno", "liquido", 253.15, 373.15,
-        "Liquido. Punto de ebullicion normal: 110.6 C (383.8 K).",
+        "Líquido. Punto de ebullición normal: 110,6 °C (383,8 K).",
         lambda T, P: _poly(T, 313.15, _TO_RHO),
         lambda T, P: _poly(T, 313.15, _TO_CP),
         lambda T, P: _poly(T, 313.15, _TO_K),
@@ -266,16 +266,16 @@ _FLUIDS: Dict[str, _FluidDef] = {
     ),
     "n-hexano": _FluidDef(
         "n-Hexano", "liquido", 253.15, 333.15,
-        "Liquido. Punto de ebullicion normal: 68.7 C (341.9 K).",
+        "Líquido. Punto de ebullición normal: 68,7 °C (341,9 K).",
         lambda T, P: _poly(T, 303.15, _HX_RHO),
         lambda T, P: _poly(T, 303.15, _HX_CP),
         lambda T, P: _poly(T, 303.15, _HX_K),
         lambda T, P: _visc(T, *_HX_MU),
     ),
     "amoniaco": _FluidDef(
-        "Amoniaco (liquido)", "liquido", 233.15, 323.15,
-        "Liquido SATURADO (refrigerante): la presion no es 1 atm sino la de "
-        "saturacion (p.ej. ~8.6 bar a 20 C). Hierve a -33.3 C a 1 atm.",
+        "Amoniaco (líquido)", "liquido", 233.15, 323.15,
+        "Líquido SATURADO (refrigerante): la presión no es 1 atm sino la de "
+        "saturación (p. ej., ~8,6 bar a 20 °C). Hierve a −33,3 °C a 1 atm.",
         lambda T, P: _poly(T, 280.0, _NH_RHO),
         lambda T, P: _poly(T, 280.0, _NH_CP),
         lambda T, P: 0.5405 - 0.00200 * (T - 273.15),
@@ -461,12 +461,12 @@ class ThermoDatabase:
         if not (f.T_min <= T_K <= f.T_max):
             raise ValueError(
                 f"[{f.label}] Temperatura fuera de rango: {T_K:.2f} K "
-                f"({T_K - 273.15:.2f} C).\n"
-                f"   Rango valido: {f.T_min:.2f} - {f.T_max:.2f} K "
-                f"({f.T_min - 273.15:.2f} - {f.T_max - 273.15:.2f} C), fase '{f.phase}'.\n"
+                f"({T_K - 273.15:.2f} °C).\n"
+                f"   Rango válido: {f.T_min:.2f} - {f.T_max:.2f} K "
+                f"({f.T_min - 273.15:.2f} - {f.T_max - 273.15:.2f} °C), fase '{f.phase}'.\n"
                 f"   Motivo: {f.note}\n"
-                f"   Extrapolar una correlacion empirica fuera de su rango da "
-                f"propiedades sin sentido fisico; corrija la temperatura de "
+                f"   Extrapolar una correlación empírica fuera de su rango da "
+                f"propiedades sin sentido físico; corrija la temperatura de "
                 f"entrada o seleccione otro fluido."
             )
 
@@ -474,7 +474,7 @@ class ThermoDatabase:
         if f.phase == "gas":
             if not math.isfinite(P) or P <= 0.0:
                 raise ValueError(
-                    f"[{f.label}] Presion absoluta invalida: {P} Pa. "
+                    f"[{f.label}] Presión absoluta inválida: {P} Pa. "
                     "Debe ser un valor finito y positivo."
                 )
 
@@ -488,9 +488,9 @@ class ThermoDatabase:
                                ("k", k, "W/m.K"), ("mu", mu, "Pa.s")):
             if not math.isfinite(val) or val <= 0.0:
                 raise ValueError(
-                    f"[{f.label}] La correlacion de '{prop}' devolvio un valor no "
-                    f"fisico ({val} {uni}) a {T_K:.2f} K. Ninguna propiedad "
-                    f"termofisica puede ser cero, negativa o indefinida. "
+                    f"[{f.label}] La correlación de '{prop}' devolvió un valor no "
+                    f"físico ({val} {uni}) a {T_K:.2f} K. Ninguna propiedad "
+                    f"termofísica puede ser cero, negativa o indefinida. "
                     f"Revise la temperatura de entrada."
                 )
 
@@ -499,9 +499,9 @@ class ThermoDatabase:
         # --- SANITY CHECK 4: Prandtl en un orden de magnitud creible ----------
         if not (1.0e-3 < Pr < 1.0e5):
             raise ValueError(
-                f"[{f.label}] Numero de Prandtl absurdo (Pr = {Pr:.3e}) a "
-                f"{T_K:.2f} K. Pr = cp*mu/k debe caer entre ~0.001 (metales "
-                f"liquidos) y ~1e4 (aceites muy viscosos). Resultado descartado."
+                f"[{f.label}] Número de Prandtl absurdo (Pr = {Pr:.3e}) a "
+                f"{T_K:.2f} K. Pr = cp·μ/k debe caer entre ~0,001 (metales "
+                f"líquidos) y ~1e4 (aceites muy viscosos). Resultado descartado."
             )
 
         return FluidState(cp=cp, mu=mu, k=k, rho=rho, Pr=Pr)

@@ -7,12 +7,12 @@ propiedades termofisicas en LaTeX (compilado con Tectonic).
 El informe declara TODOS los datos de la base (src/core/thermo_data.py):
   * la ventana de validez de cada fluido y la fuente bibliografica completa
     de la que provienen los datos ajustados (citas verificadas),
-  * la forma funcional de cada correlacion (rho, cp, k, mu) con sus
+  * la forma funcional de cada correlación (rho, cp, k, mu) con sus
     coeficientes REALES leidos de thermo_data.py al generar el documento,
-  * los materiales solidos con sus propiedades y factores de ensuciamiento,
-  * una validacion numerica frente a valores tabulados de referencia, cada
+  * los materiales sólidos con sus propiedades y factores de ensuciamiento,
+  * una validación numerica frente a valores tabulados de referencia, cada
     uno con su fuente verificada (NIST Chemistry WebBook, CoolProp/REFPROP,
-    correlaciones de referencia) y su desviacion porcentual.
+    correlaciones de referencia) y su desviación porcentual.
 
 Salida: informe_propiedades.pdf (y el .tex intermedio) en la raiz del
 proyecto, o la ruta pasada por linea de comandos.
@@ -20,14 +20,15 @@ proyecto, o la ruta pasada por linea de comandos.
 Uso:
     py src/core/informe_propiedades.py [salida.pdf]
 
-Requisito de compilacion: Tectonic (https://tectonic-typesetting.github.io),
-el motor LaTeX autodescargable. La aplicacion en si sigue sin dependencias;
-solo la generacion del informe usa Tectonic.
+Requisito de compilación: Tectonic (https://tectonic-typesetting.github.io),
+el motor LaTeX autodescargable. La aplicación en si sigue sin dependencias;
+solo la generación del informe usa Tectonic.
 """
 from __future__ import annotations
 
 import datetime
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -53,10 +54,10 @@ BIBLIO: Dict[str, str] = {
         "IAPWS. \\emph{R7-97(2012): Revised Release on the IAPWS Industrial "
         "Formulation 1997 for the Thermodynamic Properties of Water and "
         "Steam}. International Association for the Properties of Water and "
-        "Steam, Secretariat Erlangen, 1997 (revision 2007; cambios "
-        "editoriales 2009--2012). Region 1 (agua liquida): "
+        "Steam, Secretariat Erlangen, 1997 (revisión 2007; cambios "
+        "editoriales 2009--2012). Region 1 (agua líquida): "
         "$273{,}15\\ \\mathrm{K} \\le T \\le 623{,}15\\ \\mathrm{K}$, "
-        "$p_{sat}(T) \\le p \\le 100$ MPa. Articulo de referencia: "
+        "$p_{sat}(T) \\le p \\le 100$ MPa. Artículo de referencia: "
         "W. Wagner et al., ``The IAPWS Industrial Formulation 1997 for the "
         "Thermodynamic Properties of Water and Steam'', \\emph{ASME Journal "
         "of Engineering for Gas Turbines and Power}, 122(1):150--184, 2000, "
@@ -76,8 +77,8 @@ BIBLIO: Dict[str, str] = {
         "los coeficientes DIPPR por compuesto.",
     "dippr":
         "AIChE Design Institute for Physical Properties (DIPPR). "
-        "\\emph{DIPPR 801 -- Pure Component Data}, ecuacion 101 para la "
-        "viscosidad de liquido: $\\mu(T)=\\exp\\left(A+B/T+C\\ln T+D\\,"
+        "\\emph{DIPPR 801 -- Pure Component Data}, ecuación 101 para la "
+        "viscosidad de líquido: $\\mu(T)=\\exp\\left(A+B/T+C\\ln T+D\\,"
         "T^{E}\\right)$. En este proyecto se usa la forma con $E=1$.",
     "incropera":
         "T. L. Bergman, A. S. Lavine, F. P. Incropera y D. P. DeWitt. "
@@ -86,10 +87,10 @@ BIBLIO: Dict[str, str] = {
         "``Thermophysical Properties of Gases at Atmospheric Pressure'': "
         "aire (100--3000 K) y vapor de agua (380--850 K).",
     "ashrae":
-        "ASHRAE. \\emph{ASHRAE Handbook -- Fundamentals}, edicion SI 2025. "
+        "ASHRAE. \\emph{ASHRAE Handbook -- Fundamentals}, edición SI 2025. "
         "American Society of Heating, Refrigerating and Air-Conditioning "
         "Engineers, Atlanta, 2025. Capitulo 30, ``Thermophysical Properties "
-        "of Refrigerants'': tablas de liquido y vapor saturados del amoniaco "
+        "of Refrigerants'': tablas de líquido y vapor saturados del amoniaco "
         "(R-717).",
     "sutherland":
         "W. Sutherland. ``The Viscosity of Gases and Molecular Force''. "
@@ -120,18 +121,18 @@ BIBLIO: Dict[str, str] = {
         "CB-3.1.3, RCB-4.3, CB-4.4.1, RCB-4.5.2, CB-4.7.1, C-7.1.1, C-11.1 "
         "y RCB-4.6.1 de la Seccion 5 (Mechanical Standards TEMA Class R C B).",
     "asme":
-        "ASME Boiler \\& Pressure Vessel Code, Seccion VIII, Division 1. "
+        "ASME Boiler \\& Pressure Vessel Code, Seccion VIII, división 1. "
         "American Society of Mechanical Engineers. UG-27 (cilindros), "
         "UG-32 (cabezas), UG-34 (cubiertas planas).",
     "kern":
         "D. Q. Kern. \\emph{Process Heat Transfer}. McGraw-Hill, Nueva York, "
-        "1950 (871 pp.). Metodo de dimensionamiento termico del lado coraza "
+        "1950 (871 pp.). método de dimensionamiento térmico del lado coraza "
         "con baffles segmentados.",
     "serth":
         "R. W. Serth. \\emph{Process Heat Transfer: Principles and "
         "Applications}, 1.ª ed. Academic Press (Elsevier), Oxford, 2007. "
-        "ISBN 978-0-12-373588-1. Correlacion de conteo de tubos con "
-        "constantes $C_L$ y $C_{TP}$ (ver tambien R. W. Serth y T. Lestina, "
+        "ISBN 978-0-12-373588-1. Correlación de conteo de tubos con "
+        "constantes $C_L$ y $C_{TP}$ (ver también R. W. Serth y T. Lestina, "
         "\\emph{Process Heat Transfer: Principles, Applications and Rules of "
         "Thumb}, Academic Press, 2014).",
     "tan-fok":
@@ -140,8 +141,8 @@ BIBLIO: Dict[str, str] = {
         "Engineering Education}, 14(2):77--89, 2006. DOI 10.1002/cae.20073. "
         "Herramienta educativa de diseno de intercambiadores de tubos y "
         "coraza cuya interfaz inspira a este proyecto; las ecuaciones "
-        "19--32 de dimensionamiento mecanico citadas por el codigo se "
-        "refieren a este articulo.",
+        "19--32 de dimensionamiento mecánico citadas por el codigo se "
+        "refieren a este artículo.",
 }
 
 # Fuente de los datos ajustados de cada fluido (claves de BIBLIO).
@@ -159,34 +160,34 @@ _FUENTES_FLUIDO: Dict[str, List[str]] = {
 }
 
 _TEXTO_FUENTE: Dict[str, str] = {
-    "agua": "Ajuste por minimos cuadrados a las tablas de liquido "
+    "agua": "Ajuste por minimos cuadrados a las tablas de líquido "
             "saturado/comprimido de IAPWS-IF97 (propiedades de transporte "
             "según las formulaciones IAPWS 2008/2011).",
     "vapor de agua": "Ajuste a la Tabla A.4 de Incropera (vapor de agua a "
                      "1 atm, 380-850 K segun la fuente); densidad por gas "
                      "ideal.",
     "aire": "Ajuste a la Tabla A.4 de Incropera (aire seco a 1 atm, "
-            "100-3000 K en la tabla); mu y k por la correlacion de "
+            "100-3000 K en la tabla); mu y k por la correlación de "
             "Sutherland.",
     "etanol": "Correlaciones tipo DIPPR-101 ajustadas a los datos de "
-              "Perry's (8.ª ed.) para liquido.",
+              "Perry's (8.ª ed.) para líquido.",
     "metanol": "Correlaciones tipo DIPPR-101 ajustadas a los datos de "
-               "Perry's (8.ª ed.) para liquido.",
+               "Perry's (8.ª ed.) para líquido.",
     "etilenglicol": "Correlaciones tipo DIPPR-101 ajustadas a los datos de "
-                    "Perry's / DIPPR (260-470 K) para liquido puro.",
+                    "Perry's / DIPPR (260-470 K) para líquido puro.",
     "benceno": "Correlaciones tipo DIPPR-101 ajustadas a los datos de "
-               "Perry's (8.ª ed.) para liquido.",
+               "Perry's (8.ª ed.) para líquido.",
     "tolueno": "Correlaciones tipo DIPPR-101 ajustadas a los datos de "
-               "Perry's (8.ª ed.) para liquido.",
+               "Perry's (8.ª ed.) para líquido.",
     "n-hexano": "Correlaciones tipo DIPPR-101 ajustadas a los datos de "
-                "Perry's (8.ª ed.) para liquido.",
-    "amoniaco": "Datos de amoniaco LIQUIDO SATURADO de las tablas ASHRAE "
+                "Perry's (8.ª ed.) para líquido.",
+    "amoniaco": "Datos de amoniaco líquido SATURADO de las tablas ASHRAE "
                 "/ Perry's.",
 }
 
 
 # =============================================================================
-# 2. VALORES DE REFERENCIA VERIFICADOS PARA LA VALIDACION
+# 2. VALORES DE REFERENCIA VERIFICADOS PARA LA validación
 # =============================================================================
 # (fluido, T[C], propiedad, valor de referencia, unidad, etiqueta de fuente,
 #  confianza)  --  fuentes verificadas contra NIST Chemistry WebBook,
@@ -228,13 +229,13 @@ _PUNTOS_REFERENCIA: List[Tuple[str, float, str, float, str, str, str]] = [
     ("n-Hexano", 25.0, "cp", 2273, "J/kg.K", "NIST (Thol/Wang)", "alta"),
     ("n-Hexano", 25.0, "k", 0.120, "W/m.K", "NIST (Assael)", "alta"),
     ("n-Hexano", 25.0, "mu", 2.98e-4, "Pa.s", "NIST (Assael)", "alta"),
-    ("Amoniaco (liquido)", 25.0, "rho", 602.9, "kg/m3",
+    ("Amoniaco (líquido)", 25.0, "rho", 602.9, "kg/m3",
      "NIST (Tillner-Roth)", "alta"),
-    ("Amoniaco (liquido)", 25.0, "cp", 4780, "J/kg.K",
+    ("Amoniaco (líquido)", 25.0, "cp", 4780, "J/kg.K",
      "NIST (Tillner-Roth)", "alta"),
-    ("Amoniaco (liquido)", 25.0, "k", 0.470, "W/m.K",
+    ("Amoniaco (líquido)", 25.0, "k", 0.470, "W/m.K",
      "NIST (Tillner-Roth)", "alta"),
-    ("Amoniaco (liquido)", 25.0, "mu", 1.27e-4, "Pa.s",
+    ("Amoniaco (líquido)", 25.0, "mu", 1.27e-4, "Pa.s",
      "NIST (Tillner-Roth)", "alta"),
     ("Aire", 25.0, "rho", 1.184, "kg/m3", "CoolProp (Lemmon 2000)", "alta"),
     ("Aire", 25.0, "cp", 1006, "J/kg.K", "CoolProp (Lemmon 2000)", "alta"),
@@ -269,7 +270,7 @@ _FLUIDOS_INFORME = [
      ("DIPPR-101", "_TO_MU")),
     ("n-hexano", "n-Hexano", 303.15, ("_HX_RHO", "_HX_CP", "_HX_K"),
      ("DIPPR-101", "_HX_MU")),
-    ("amoniaco", "Amoniaco (liquido)", 280.0, ("_NH_RHO", "_NH_CP", None),
+    ("amoniaco", "Amoniaco (líquido)", 280.0, ("_NH_RHO", "_NH_CP", None),
      ("DIPPR-101", "_NH_MU")),
 ]
 
@@ -277,6 +278,15 @@ _FLUIDOS_INFORME = [
 # =============================================================================
 # 3. UTILIDADES LaTeX
 # =============================================================================
+_FASE_ES = {"liquido": "líquido", "gas": "gas", "vapor": "vapor",
+            "liquido saturado": "líquido saturado"}
+
+
+def _fase(phase: str) -> str:
+    """Nombre de la fase para mostrar (el token interno no se toca)."""
+    return _FASE_ES.get((phase or "").strip().lower(), phase)
+
+
 def _esc(txt: str) -> str:
     """Escapa los caracteres especiales de LaTeX en texto plano."""
     reemplazos = {
@@ -300,7 +310,7 @@ def _numero(x: float) -> str:
 
 
 # =============================================================================
-# 4. GENERACION DEL DOCUMENTO
+# 4. GENERACIÓN DEL DOCUMENTO
 # =============================================================================
 def _portada(hoy: str) -> str:
     return rf"""
@@ -336,7 +346,7 @@ def _seccion_fuente() -> str:
         T_min, T_max = td.db.get_limits(etiqueta, "C")
         refs = ", ".join(rf"\cite{{{k}}}" for k in _FUENTES_FLUIDO[clave])
         filas.append(
-            rf"{_esc(etiqueta)} & {f.phase} & "
+            rf"{_esc(etiqueta)} & {_fase(f.phase)} & "
             rf"{T_min:.0f} a {T_max:.0f} & {_esc(_TEXTO_FUENTE[clave])} "
             rf"& {refs} \\")
     cuerpo = "\n".join(filas)
@@ -389,7 +399,7 @@ def _seccion_coeficientes() -> str:
         nota = _esc(f.note)
         bloques.append(rf"""
 \subsection*{{{_esc(etiqueta)}}}
-{{\small\color{{gristexto}} Fase: {f.phase} $\cdot$ Ventana:
+{{\small\color{{gristexto}} Fase: {_fase(f.phase)} $\cdot$ Ventana:
  {T_min:.1f} a {T_max:.1f} $^\circ$C ({f.T_min:.2f}--{f.T_max:.2f} K)
  $\cdot$ Fuentes: {refs}.}}\\[2pt]
 \begin{{tabular}}{{llp{{7.6cm}}}}
@@ -442,7 +452,7 @@ def _seccion_validacion() -> str:
     return rf"""
 {{\small\setlength{{\tabcolsep}}{{4pt}}%
 \begin{{longtable}}{{@{{}}l c c r r r l c@{{}}}}
-\caption{{Validacion frente a valores tabulados de referencia}}\label{{tab:val}}\\
+\caption{{validación frente a valores tabulados de referencia}}\label{{tab:val}}\\
 \toprule
 \textbf{{Fluido}} & \textbf{{$T$ ($^\circ$C)}} & \textbf{{Prop.}} &
 \textbf{{Referencia}} & \textbf{{Programa}} & \textbf{{Desv.}} &
@@ -459,10 +469,10 @@ def _seccion_validacion() -> str:
 \bottomrule
 \end{{longtable}}}}
 
-\textbf{{Lectura de la validacion.}} Desviacion maxima en densidad y
-capacidad calorifica: {peor_rho_cp:.2f}\,\%; en conductividad termica:
+\textbf{{Lectura de la validación.}} desviación máxima en densidad y
+capacidad calorífica: {peor_rho_cp:.2f}\,\%; en conductividad térmica:
 {resumen['k']:.2f}\,\%; en viscosidad: {resumen['mu']:.2f}\,\%. La
-viscosidad es la propiedad mas sensible a la fuente tabulada; las
+viscosidad es la propiedad más sensible a la fuente tabulada; las
 discrepancias entre fuentes para un mismo fluido alcanzan el 2--6\,\%
 (como se anota en la columna ``Fuente del valor''). Para diseno de detalle
 con fluidos de viscosidad critica se recomienda contrastar con NIST
@@ -527,10 +537,10 @@ def generar_informe(ruta_salida: Optional[str] = None) -> str:
 \newpage
 
 \section{Objeto y alcance}
-Este informe declara \textbf{todos los datos} que usa el motor de calculo del
+Este informe declara \textbf{todos los datos} que usa el motor de cálculo del
 software: de donde proviene cada propiedad termofisica, con que forma
 funcional se representa, cuales son sus coeficientes numericos, en que
-ventana de temperatura son validas y con que precision reproducen los
+ventana de temperatura son validas y con que precisión reproducen los
 valores tabulados de referencia verificados. Los coeficientes que se listan
 se leen directamente del codigo fuente (\texttt{thermo\_data.py}) al generar
 este documento, de modo que el informe no puede quedar desactualizado
@@ -538,17 +548,17 @@ respecto del programa.
 
 Todas las magnitudes estan en unidades SI: $c_p$ en J/(kg\,K), $\mu$ en
 Pa\,s, $k$ en W/(m\,K), $\rho$ en kg/m$^3$ y las temperaturas en kelvin (el
-programa presenta resultados en grados Celsius). El numero de Prandtl se
+programa presenta resultados en grados Celsius). El número de Prandtl se
 calcula como $\mathrm{Pr} = c_p \mu / k$.
 
-El motor de calculo que consume estas propiedades implementa el metodo de
-Kern \cite{kern} con la correlacion de conteo de tubos de Serth
-\cite{serth}, y el diseno mecanico sigue el estandar TEMA Clase C
+El motor de cálculo que consume estas propiedades implementa el método de
+Kern \cite{kern} con la correlación de conteo de tubos de Serth
+\cite{serth}, y el diseno mecánico sigue el estandar TEMA Clase C
 \cite{tema} y el ASME BPVC VIII-1 \cite{asme}; la interfaz y las ecuaciones
-de dimensionamiento mecanico (19--32) se documentan en Tan y Fok (2006)
+de dimensionamiento mecánico (19--32) se documentan en Tan y Fok (2006)
 \cite{tan-fok}.
 
-\section{Marco metodologico}
+\section{Marco metodológico}
 \subsection{Formas funcionales}
 \textbf{Polinomio centrado} (para $\rho$, $c_p$ y $k$ de liquidos y del
 vapor):
@@ -556,7 +566,7 @@ vapor):
   y(T) = c_0 + c_1 (T - T_0) + c_2 (T - T_0)^2 + c_3 (T - T_0)^3
 \]
 Los polinomios se centran en $T_0$ (temperatura media del rango de ajuste),
-lo que reduce la correlacion entre coeficientes y mejora la precision
+lo que reduce la correlación entre coeficientes y mejora la precisión
 numerica del ajuste por minimos cuadrados.
 
 \textbf{Viscosidad tipo DIPPR-101} (alcoholes, hidrocarburos, glicol y
@@ -567,7 +577,7 @@ amoniaco) \cite{dippr, perry}:
 
 \textbf{Gases} (aire y vapor de agua): densidad por gas ideal
 $\rho = P M / (R_u T)$ con $R_u = 8314{,}46$ J/(kmol\,K); para el aire,
-$\mu$ y $k$ por la correlacion de Sutherland \cite{sutherland}:
+$\mu$ y $k$ por la correlación de Sutherland \cite{sutherland}:
 \[
   \mu_{\mathrm{aire}}(T) = 1{,}458\times10^{-6}\,
   \frac{T^{3/2}}{T + 110{,}4}, \qquad
@@ -575,10 +585,10 @@ $\mu$ y $k$ por la correlacion de Sutherland \cite{sutherland}:
   \frac{T^{3/2}}{T + 245{,}4\cdot 10^{-12/T}}
 \]
 
-\subsection{Politica de validez}
+\subsection{política de validez}
 Cada fluido declara su ventana $[T_{\min}, T_{\max}]$; fuera de ella el
-programa lanza un error y \textbf{no extrapola}: la extrapolacion de una
-correlacion empirica no es fisica. Ademas, cada propiedad calculada se
+programa lanza un error y \textbf{no extrapola}: la extrapolación de una
+correlación empirica no es física. Además, cada propiedad calculada se
 valida contra signos fisicos y un rango creible de Prandtl. Las
 correlaciones se evalúan a la temperatura media de cada lado. La correcci\'on de
 pared es $(\mu/\mu_w)^{0{,}14}$ (Sieder--Tate) salvo en
@@ -590,7 +600,7 @@ Dittus--Boelter, que usa $Pr^{n}$ con $n = 0{,}4/0{,}3$ seg\'un el sentido del c
 Coeficientes tal como estan escritos en \texttt{thermo\_data.py}. $T_0$ es la
 temperatura de centrado del polinomio, en K.
 """ + _seccion_coeficientes() + r"""
-\section{Materiales solidos de construccion}
+\section{Materiales sólidos de construcción}
 Propiedades de los metales de tubos y coraza \cite{tema}. $k_m$ y $\rho_m$ a
 temperatura ambiente; $\varepsilon$ es la rugosidad absoluta y $R_f$ el
 factor de ensuciamiento de diseno del estandar TEMA Clase C (1
@@ -598,32 +608,32 @@ h\,ft$^2$\,\textdegree F/Btu = 0{,}17611 m$^2$\,K/W; los valores tabulados
 corresponden a 0,001 y 0,002 h\,ft$^2$\,\textdegree F/Btu de la Tabla
 RGP-2.4).
 """ + _seccion_materiales() + r"""
-\section{Validacion numerica}
-Cada punto compara el valor que devuelve la correlacion del programa con el
+\section{validación numerica}
+Cada punto compara el valor que devuelve la correlación del programa con el
 valor tabulado de referencia verificado (NIST Chemistry WebBook,
-CoolProp/REFPROP y correlaciones de referencia publicadas). La desviacion es
+CoolProp/REFPROP y correlaciones de referencia publicadas). La desviación es
 $(\text{calculado} - \text{referencia})/\text{referencia}$.
 """ + _seccion_validacion() + r"""
 \section{Conclusiones y limitaciones de uso}
 \begin{enumerate}[leftmargin=1.4em]
 \item Las correlaciones son validas \textbf{solo} dentro de la ventana
-declarada por fluido; fuera de ella el programa rechaza el calculo en lugar
+declarada por fluido; fuera de ella el programa rechaza el cálculo en lugar
 de extrapolar.
-\item El agua liquida termina en 100\,\textdegree C (ebullicion a 1 atm). El
+\item El agua líquida termina en 100\,\textdegree C (ebullición a 1 atm). El
 ajuste IAPWS subyacente alcanzaba 180\,\textdegree C, pero exigiria
-presurizar el equipo y el modelo es monofasico, sin presion de operacion
+presurizar el equipo y el modelo es monofasico, sin presión de operación
 \cite{iapws-if97}.
-\item El amoniaco se modela como liquido \textbf{saturado}: su presion es la
-de saturacion (10,03 bar a 25\,\textdegree C), no 1 atm \cite{ashrae}.
+\item El amoniaco se modela como líquido \textbf{saturado}: su presión es la
+de saturación (10,03 bar a 25\,\textdegree C), no 1 atm \cite{ashrae}.
 \item El aire y el vapor usan gas ideal para $\rho$; frente al valor real del
 vapor a 150\,\textdegree C y 1 atm la diferencia es del 0,8\,\%, aceptable
 para el alcance docente; para presiones muy alejadas de 1 atm habria que
 corregir el factor de compresibilidad \cite{nist}.
-\item La viscosidad es la propiedad con mayor dispersion entre fuentes
+\item La viscosidad es la propiedad con mayor dispersión entre fuentes
 (2--6\,\% para un mismo fluido) y concentra las mayores desviaciones de la
-validacion.
+validación.
 \item Para diseno en regimen laminar, la incertidumbre de los coeficientes de
-conveccion domina sobre la de las propiedades: el programa reporta bandas de
+convección domina sobre la de las propiedades: el programa reporta bandas de
 hasta $\pm 25\,\%$ sobre $U$ en esos casos.
 \end{enumerate}
 
@@ -634,6 +644,10 @@ hasta $\pm 25\,\%$ sobre $U$ en esos casos.
 
 \end{document}
 """
+    # Comas decimales en todo el documento (norma tipografica en espanol).
+    # Excluye puntos dentro de palabras, rutas o numeracion (8.ª, tablas 5.13).
+    tex = re.sub(r"(?<![\w.:/=])(\d+)\.(\d+)(?![\w])", r"\1,\2", tex)
+
     with open(ruta_tex, "w", encoding="utf-8") as fh:
         fh.write(tex)
 
