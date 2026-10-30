@@ -580,9 +580,9 @@ Cada fluido declara su ventana $[T_{\min}, T_{\max}]$; fuera de ella el
 programa lanza un error y \textbf{no extrapola}: la extrapolacion de una
 correlacion empirica no es fisica. Ademas, cada propiedad calculada se
 valida contra signos fisicos y un rango creible de Prandtl. Las
-correlaciones se evaluan a la temperatura media de cada lado, con la
-correccion por viscosidad de pared $(\mu/\mu_w)^{0{,}14}$ tipica de
-Sieder--Tate.
+correlaciones se evalúan a la temperatura media de cada lado. La correcci\'on de
+pared es $(\mu/\mu_w)^{0{,}14}$ (Sieder--Tate) salvo en
+Dittus--Boelter, que usa $Pr^{n}$ con $n = 0{,}4/0{,}3$ seg\'un el sentido del calor.
 
 \section{Procedencia de los datos por fluido}
 """ + _seccion_fuente() + r"""
