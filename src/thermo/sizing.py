@@ -1098,11 +1098,11 @@ def dimensionar(caliente: Stream, fria: Stream,
                       "dispersión restante es del lado tubos. Contraste con "
                       "datos de servicio, ε-NTU o literatura antes de fabricar.")
         else:
-            cierre = ("En laminar/transición las correlaciones de Hausen y "
-                      "Gnielinski ya son las adecuadas, pero la dispersión "
-                      "sigue siendo mayor que en turbulento: contraste con "
-                      "Bell-Delaware, ε-NTU o datos de servicio antes de "
-                      "fabricar.")
+            cierre = ("Este cálculo usó Kern en la coraza; Bell-Delaware "
+                      "viene incluido en el programa: para el contraste, "
+                      "cambie «Método coraza» a Bell-Delaware en Design y "
+                      "recalcule, o compare con ε-NTU o datos de servicio "
+                      "antes de fabricar.")
         adv.append(
             f"Resultado U = {U:,.1f} W/m²·K con banda de incertidumbre estimada "
             f"de ±{banda:.0f} % (régimen tubos: {regimen}, coraza: {regimen_s}; "

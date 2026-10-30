@@ -561,11 +561,11 @@ def evaluar(caliente: Stream, fria: Stream, geom: ExchangerGeometry,
                       "datos de servicio, ε-NTU o literatura antes de tomar "
                       "decisiones de diseño.")
         else:
-            cierre = ("En laminar/transición las correlaciones de Hausen y "
-                      "Gnielinski ya son las adecuadas, pero la dispersión "
-                      "sigue siendo mayor que en turbulento: contraste con "
-                      "Bell-Delaware o datos de servicio antes de tomar "
-                      "decisiones de diseño.")
+            cierre = ("Este cálculo usó Kern en la coraza; Bell-Delaware "
+                      "viene incluido en el programa: para el contraste, "
+                      "cambie «Método coraza» a Bell-Delaware en Design y "
+                      "recalcule, o compare con datos de servicio antes de "
+                      "tomar decisiones de diseño.")
         adv.append(
             f"Resultado U = {punto.U:,.1f} W/m²·K con banda de incertidumbre "
             f"estimada de ±{banda:.0f} % (régimen tubos: {punto.regimen}, "

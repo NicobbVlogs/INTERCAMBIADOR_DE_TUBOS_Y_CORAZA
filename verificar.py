@@ -808,6 +808,8 @@ def probar_ejemplos_gui() -> None:
     # Los mensajes de incertidumbre nombran el metodo realmente usado.
     crudo = io_state.abrir("ejemplos/sizing/06_tan_fok_sizing.bb")
     texto = {}
+    bandas = {}
+    aplicado = {}
     for etiqueta in ("Kern (clásico)", "Bell-Delaware"):
         d = {}
         for k, v in crudo.items():
@@ -816,10 +818,21 @@ def probar_ejemplos_gui() -> None:
         d["metodo_coraza"] = etiqueta
         r = ctrl.correr_sizing(d)
         texto[etiqueta] = " ".join(r.advertencias)
-    check("contraste con Bell-Delaware" in texto["Kern (clásico)"],
-          "con Kern el aviso recomienda contrastar con Bell-Delaware")
-    check("contraste con Bell-Delaware" not in texto["Bell-Delaware"],
-          "con Bell-Delaware el aviso NO recomienda el metodo ya en uso")
+        bandas[etiqueta] = [a for a in r.advertencias
+                            if "banda de incertidumbre" in a]
+        aplicado[etiqueta] = r.metodo_coraza
+    check("viene incluido en el programa" in texto["Kern (clásico)"] and
+          "Bell-Delaware" in texto["Kern (clásico)"],
+          "con Kern el aviso aclara que Bell-Delaware esta incluido y como usarlo")
+    check(aplicado["Bell-Delaware"] == "bell_delaware",
+          "el selector Bell-Delaware llega realmente al motor")
+    no_recomienda = all("viene incluido en el programa" not in a
+                        for a in bandas["Bell-Delaware"])
+    check(no_recomienda and all("ya se calcula con Bell-Delaware" in a
+                                for a in bandas["Bell-Delaware"]),
+          "con Bell-Delaware el aviso NO recomienda el metodo ya en uso "
+          "(o no hay aviso porque la banda ya es la base de 15 %)",
+          str(bandas["Bell-Delaware"]))
     check("la banda la fija el lado" in texto["Kern (clásico)"],
           "el aviso indica que lado fija la banda de incertidumbre")
     win.destroy()
