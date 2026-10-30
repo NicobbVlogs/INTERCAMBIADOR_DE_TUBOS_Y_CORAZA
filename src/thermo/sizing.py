@@ -67,6 +67,15 @@ TEMA_CARCASAS = ("E", "F", "G", "H", "J", "K", "X")
 # cubierto; la dispersion sigue creciendo al bajar de Re ~ 1e4 porque la
 # correccion de coraza (Kern) es la que mas pesa en U.
 INCERTIDUMBRE_U = {"turbulento": 15.0, "transicion": 20.0, "laminar": 25.0}
+# Contribucion de la CORAZA a la banda de incertidumbre de U segun el metodo
+# con que se calcula h_o. Kern: grafico j_H de Kern (dispersion tipica +-25 %
+# sobre h_o). Bell-Delaware corrige fugas y bypass sobre el banco ideal; su
+# precision reportada para equipos bien disenados (0.45 < Jc*Jl*Jb*Jr < 0.8)
+# ronda +-15 % sobre h_o (Bell, 1963; Taborek, 1983), de ahi bandas menores.
+INCERTIDUMBRE_CORAZA = {
+    "kern": dict(INCERTIDUMBRE_U),
+    "bell_delaware": {"turbulento": 12.0, "transicion": 15.0, "laminar": 20.0},
+}
 
 
 # =============================================================================
@@ -1062,26 +1071,42 @@ def dimensionar(caliente: Stream, fria: Stream,
         )
 
     # --- Regimen de flujo e incertidumbre de los coeficientes ---------------
-    for lado, regimen_x, Re_x in (("tubos", regimen, Re_t),
-                                  ("coraza", regimen_s, Re_s)):
+    metodo = "bell_delaware" if metodo_coraza == "bell_delaware" else "kern"
+    coraza_txt = ("Bell-Delaware (factores Jc, Jl, Jb y Jr sobre el banco "
+                  "ideal)" if metodo == "bell_delaware"
+                  else "Kern laminar con dependencia de Graetz")
+    inc_coraza = INCERTIDUMBRE_CORAZA[metodo]
+    for lado, regimen_x, Re_x, tabla in (
+            ("tubos", regimen, Re_t, INCERTIDUMBRE_U),
+            ("coraza", regimen_s, Re_s, inc_coraza)):
         if regimen_x == "turbulento":
             continue
         adv.append(
             f"Flujo en {lado} en régimen {regimen_x} (Re = {Re_x:,.0f}). "
             "El programa lo cubre con correlaciones específicas para este "
-            "régimen (Hausen y Gnielinski en tubos, Kern laminar con "
-            "dependencia de Graetz en coraza), pero la dispersión es mayor "
-            f"que en turbulento: ±{INCERTIDUMBRE_U[regimen_x]:.0f} % sobre U."
+            f"régimen (Hausen y Gnielinski en tubos, {coraza_txt} en coraza), "
+            "pero la dispersión es mayor que en turbulento: "
+            f"±{tabla[regimen_x]:.0f} % sobre U."
         )
-    banda = max(INCERTIDUMBRE_U[regimen], INCERTIDUMBRE_U[regimen_s])
+    banda = max(INCERTIDUMBRE_U[regimen], inc_coraza[regimen_s])
     if banda > 15.0:
+        fijante = ("tubos" if INCERTIDUMBRE_U[regimen] >= inc_coraza[regimen_s]
+                   else "coraza")
+        if metodo == "bell_delaware":
+            cierre = (f"La coraza ya se calcula con Bell-Delaware (su aporte a "
+                      f"la banda es de ±{inc_coraza[regimen_s]:.0f} %): la "
+                      "dispersión restante es del lado tubos. Contraste con "
+                      "datos de servicio, ε-NTU o literatura antes de fabricar.")
+        else:
+            cierre = ("En laminar/transición las correlaciones de Hausen y "
+                      "Gnielinski ya son las adecuadas, pero la dispersión "
+                      "sigue siendo mayor que en turbulento: contraste con "
+                      "Bell-Delaware, ε-NTU o datos de servicio antes de "
+                      "fabricar.")
         adv.append(
             f"Resultado U = {U:,.1f} W/m²·K con banda de incertidumbre estimada "
-            f"de ±{banda:.0f} % (régimen tubos: {regimen}, coraza: {regimen_s}). "
-            "En laminar/transición las correlaciones de Hausen y Gnielinski ya "
-            "son las adecuadas, pero la dispersión sigue siendo mayor que en "
-            "turbulento: contraste con Bell-Delaware, ε-NTU o datos de servicio "
-            "antes de fabricar."
+            f"de ±{banda:.0f} % (régimen tubos: {regimen}, coraza: {regimen_s}; "
+            f"la banda la fija el lado {fijante}). {cierre}"
         )
 
     if not RE_KERN_MIN <= Re_s <= RE_KERN_MAX and regimen_s == "turbulento":

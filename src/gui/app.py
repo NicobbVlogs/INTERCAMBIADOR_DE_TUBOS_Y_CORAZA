@@ -321,7 +321,8 @@ class Aplicacion(ctk.CTk):
         rotulo(banner, text="Hoja de diseño térmico y mecánico",
                style="Banner.TLabel").pack(anchor="w", padx=18, pady=(14, 0))
         rotulo(banner,
-               text="Método de Kern   ·   TEMA Clase C   ·   Unidades SI",
+               text="Método de Kern o Bell-Delaware   ·   TEMA Clase C   "
+                    "·   Unidades SI",
                style="BannerNota.TLabel").pack(anchor="w", padx=18,
                                                pady=(2, 12))
         # Barra de acento bicolor: carmesí + naranja.
@@ -568,10 +569,14 @@ class Aplicacion(ctk.CTk):
         self.marco_rating = m = self._marco(
             padre, "B · SOLO EVALUAR (Rating)", fila, 1)
         f.add("n_tt", CampoNumerico(m, 0, "N.º total de tubos", "–",
-                                    minimo=1, entero=True,
-                                    ayuda="Geometría real del equipo existente."))
+                                    minimo=1, entero=True, opcional=True,
+                                    ayuda="Geometría real del equipo existente. "
+                                          "Obligatorio solo en modo rating: en "
+                                          "sizing el programa lo calcula."))
         f.add("d_s_mm", CampoNumerico(m, 1, "Ø interior de coraza", "mm",
-                                      minimo=50.0))
+                                      minimo=50.0, opcional=True,
+                                      ayuda="Obligatorio solo en modo rating; "
+                                            "en sizing es un resultado."))
         rotulo(m, style="Nota.TLabel", wraplength=430, justify="left",
                   text="Geometría del equipo YA CONSTRUIDO. En modo rating las "
                        "temperaturas de salida son las incógnitas: déjelas "
@@ -1493,8 +1498,11 @@ AYUDA = [
      "(2100-2400 en tubos, 100-2000 en coraza) se mezclan ambas "
      "correlaciones de forma continua. La banda de incertidumbre estimada "
      "sobre U es ±15 % en turbulento, ±20 % en transición y ±25 % en "
-     "laminar. En los regímenes no turbulentos contraste el resultado con "
-     "datos de servicio, ε-NTU o literatura antes de fabricar."),
+     "laminar; la banda la fija el lado más incierto, y si la coraza se "
+     "calcula con Bell-Delaware su aporte baja (±12/15/20 %), de modo que "
+     "en laminar suele quedar fijada por el lado tubos. En los regímenes "
+     "no turbulentos contraste el resultado con datos de servicio, ε-NTU "
+     "o literatura antes de fabricar."),
     ("12. Método de coraza: Kern y Bell-Delaware",
      "En Design, el campo «Método coraza» elige cómo se calcula el lado "
      "coraza. Kern (por defecto) usa las correlaciones clásicas del capítulo "

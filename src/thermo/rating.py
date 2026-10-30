@@ -40,7 +40,8 @@ except ImportError:  # ejecucion directa: `python src/thermo/rating.py`
     from src.core.thermo_data import FluidState, ThermoDatabase
 
 from src.thermo.sizing import (
-    INCERTIDUMBRE_U, RE_KERN_MAX, RE_KERN_MIN, V_CORAZA_MAX, V_CORAZA_MIN,
+    INCERTIDUMBRE_CORAZA, INCERTIDUMBRE_U, RE_KERN_MAX, RE_KERN_MIN,
+    V_CORAZA_MAX, V_CORAZA_MIN,
     V_TUBO_MAX, V_TUBO_MIN, ShellGeometry, Stream, TubeGeometry,
     aviso_tipo_carcasa, caida_presion_coraza, caida_presion_tubos,
     chequeo_cercania_fase, chequeo_saturacion, coeficiente_global,
@@ -532,27 +533,44 @@ def evaluar(caliente: Stream, fria: Stream, geom: ExchangerGeometry,
         aviso = chequeo_saturacion(flu, T_pico)
         if aviso:
             adv.append(aviso)
-    for lado, regimen_x, Re_x in (("tubos", punto.regimen, punto.Re_t),
-                                  ("coraza", punto.regimen_s, punto.Re_s)):
+    metodo = "bell_delaware" if metodo_coraza == "bell_delaware" else "kern"
+    coraza_txt = ("Bell-Delaware (factores Jc, Jl, Jb y Jr sobre el banco "
+                  "ideal)" if metodo == "bell_delaware"
+                  else "Kern laminar con dependencia de Graetz")
+    inc_coraza = INCERTIDUMBRE_CORAZA[metodo]
+    for lado, regimen_x, Re_x, tabla in (
+            ("tubos", punto.regimen, punto.Re_t, INCERTIDUMBRE_U),
+            ("coraza", punto.regimen_s, punto.Re_s, inc_coraza)):
         if regimen_x == "turbulento":
             continue
         adv.append(
             f"Flujo en {lado} en régimen {regimen_x} "
             f"(Re = {Re_x:,.0f}): el programa lo cubre con las correlaciones "
-            "específicas para este régimen (Hausen y Gnielinski en tubos, "
-            "Kern laminar con dependencia de Graetz en coraza); la dispersión "
-            f"de U llega a ±{INCERTIDUMBRE_U[regimen_x]:.0f} %."
+            f"específicas para este régimen (Hausen y Gnielinski en tubos, "
+            f"{coraza_txt} en coraza); la dispersión "
+            f"de U llega a ±{tabla[regimen_x]:.0f} %."
         )
-    banda = max(INCERTIDUMBRE_U[punto.regimen], INCERTIDUMBRE_U[punto.regimen_s])
+    banda = max(INCERTIDUMBRE_U[punto.regimen], inc_coraza[punto.regimen_s])
     if banda > 15.0:
+        fijante = ("tubos" if INCERTIDUMBRE_U[punto.regimen] >=
+                   inc_coraza[punto.regimen_s] else "coraza")
+        if metodo == "bell_delaware":
+            cierre = (f"La coraza ya se calcula con Bell-Delaware (su aporte a "
+                      f"la banda es de ±{inc_coraza[punto.regimen_s]:.0f} %): "
+                      "la dispersión restante es del lado tubos. Contraste con "
+                      "datos de servicio, ε-NTU o literatura antes de tomar "
+                      "decisiones de diseño.")
+        else:
+            cierre = ("En laminar/transición las correlaciones de Hausen y "
+                      "Gnielinski ya son las adecuadas, pero la dispersión "
+                      "sigue siendo mayor que en turbulento: contraste con "
+                      "Bell-Delaware o datos de servicio antes de tomar "
+                      "decisiones de diseño.")
         adv.append(
             f"Resultado U = {punto.U:,.1f} W/m²·K con banda de incertidumbre "
             f"estimada de ±{banda:.0f} % (régimen tubos: {punto.regimen}, "
-            f"coraza: {punto.regimen_s}). En laminar/transición las "
-            "correlaciones de Hausen y Gnielinski ya son las adecuadas, pero "
-            "la dispersión sigue siendo mayor que en turbulento: contraste "
-            "con Bell-Delaware o datos de servicio antes de tomar decisiones "
-            "de diseño."
+            f"coraza: {punto.regimen_s}; la banda la fija el lado {fijante}). "
+            f"{cierre}"
         )
     if punto.regimen_s == "turbulento" and not RE_KERN_MIN <= punto.Re_s <= RE_KERN_MAX:
         adv.append(

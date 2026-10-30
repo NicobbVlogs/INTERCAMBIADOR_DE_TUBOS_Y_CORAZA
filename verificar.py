@@ -747,6 +747,84 @@ def probar_robustez() -> None:
           f"({100*completos/casos:.0f} %)")
 
 
+
+# =============================================================================
+# 6b. APERTURA DE EJEMPLOS EN LA GUI Y COHERENCIA DE LOS MENSAJES
+# =============================================================================
+def probar_ejemplos_gui() -> None:
+    bloque("6b. Apertura de los 11 ejemplos en la GUI y avisos segun el metodo")
+    from tkinter import messagebox
+    from src.core.errores import ErrorDiseno
+    from src.gui import app as A
+    from src.gui import controller as ctrl
+    from src.gui import io_state
+
+    campos_texto = ("fluido_cal", "fluido_fri", "lado_tubos", 
+                    "layout", "n_pasos", "mat_tubo", "tipo_carcasa", 
+                    "cab_frontal", "cab_trasero", "mat_carcasa", 
+                    "metodo_coraza")
+
+    avisos = []
+    for nombre in ("showinfo", "showwarning", "showerror"):
+        setattr(messagebox, nombre,
+                lambda t, m, _n=nombre: avisos.append((_n, t, m)))
+    A.messagebox = messagebox
+
+    win = A.Aplicacion()
+    win.update()
+    cargados = 0
+    for carpeta in ("sizing", "rating"):
+        ruta_grupo = os.path.join("ejemplos", carpeta)
+        for archivo in sorted(os.listdir(ruta_grupo)):
+            if not archivo.endswith(io_state.EXTENSION):
+                continue
+            avisos.clear()
+            win._cargar_ejemplo(os.path.join(ruta_grupo, archivo))
+            win.update()
+            malos = [a for a in avisos if a[0] in ("showwarning", "showerror")]
+            check(not malos,
+                  f"{archivo} abre y calcula sin errores de formulario",
+                  str(malos[:1]))
+            cargados += 1
+    check(cargados == 11, f"los 11 ejemplos cargan por la ruta real de la GUI "
+                          f"({cargados} cargados)")
+
+    # Los combos aceptan variantes de mayusculas y normalizan al canonico.
+    campo = win.form.campos["fluido_cal"]
+    check(campo.set("agua") and campo.get() == "Agua",
+          "los combos normalizan 'agua' -> 'Agua' (los .bb antiguos abren)")
+    check(not campo.set("agua sucia"),
+          "un valor que no existe sigue rechazandose")
+
+    # El rating exige la geometria del equipo con un error educativo.
+    base = dict(A.VALORES_DEFECTO)
+    try:
+        ctrl.correr_rating(dict(base, n_tt=None, d_s_mm=None))
+        check(False, "el rating sin N_tt/D_s debe rechazarse")
+    except ErrorDiseno as exc:
+        check("geometría del equipo existente" in exc.titulo,
+              "el rating sin geometria explica que falta (ErrorDiseno educativo)")
+
+    # Los mensajes de incertidumbre nombran el metodo realmente usado.
+    crudo = io_state.abrir("ejemplos/sizing/06_tan_fok_sizing.bb")
+    texto = {}
+    for etiqueta in ("Kern (clásico)", "Bell-Delaware"):
+        d = {}
+        for k, v in crudo.items():
+            d[k] = (v if k in campos_texto else
+                    (float(v) if v is not None and str(v).strip() else None))
+        d["metodo_coraza"] = etiqueta
+        r = ctrl.correr_sizing(d)
+        texto[etiqueta] = " ".join(r.advertencias)
+    check("contraste con Bell-Delaware" in texto["Kern (clásico)"],
+          "con Kern el aviso recomienda contrastar con Bell-Delaware")
+    check("contraste con Bell-Delaware" not in texto["Bell-Delaware"],
+          "con Bell-Delaware el aviso NO recomienda el metodo ya en uso")
+    check("la banda la fija el lado" in texto["Kern (clásico)"],
+          "el aviso indica que lado fija la banda de incertidumbre")
+    win.destroy()
+
+
 # =============================================================================
 def main() -> int:
     print("=" * 68)
@@ -754,7 +832,7 @@ def main() -> int:
     print("=" * 68)
     for prueba in (probar_core, probar_calculo, probar_errores,
                    probar_tipos_tema, probar_laminar, probar_bell_delaware,
-                   probar_gui,
+                   probar_gui, probar_ejemplos_gui,
                    probar_ejemplos, probar_robustez):
         try:
             prueba()

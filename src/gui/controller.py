@@ -20,10 +20,12 @@ import sys
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
+    from src.core.errores import ErrorDiseno
     from src.core.thermo_data import ThermoDatabase
 except ImportError:  # ejecucion directa: `python src/gui/app.py`
     sys.path.insert(0, os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..")))
+    from src.core.errores import ErrorDiseno
     from src.core.thermo_data import ThermoDatabase
 
 db = ThermoDatabase()
@@ -365,6 +367,20 @@ def correr_sizing(d: Dict[str, Any]):
 def correr_rating(d: Dict[str, Any]):
     """Evalua un equipo ya construido: itera sobre las T de salida."""
     _exigir_modulos()
+    if (d.get("n_tt") is None or str(d.get("n_tt")).strip() == ""
+            or d.get("d_s_mm") is None or str(d.get("d_s_mm")).strip() == ""):
+        raise ErrorDiseno(
+            titulo="Falta la geometría del equipo existente",
+            que_paso=("El modo rating evalúa un equipo YA CONSTRUIDO y faltan "
+                      "el número total de tubos (N_tt) y/o el diámetro interior "
+                      "de coraza (D_s)."),
+            por_que=("En sizing esos datos son resultados del cálculo; en "
+                     "rating son la geometría conocida sin la cual no existe "
+                     "equipo que evaluar."),
+            solucion=("Rellene «N.º total de tubos» y «Ø interior de coraza» "
+                      "en la pestaña Design, o cambie a modo sizing (F5) para "
+                      "que el programa los dimensione."),
+            referencia="TEMA Clase C: geometría del equipo (sección 3).")
     caliente, fria = _corrientes_rating(d)
     tubos, coraza = _geometria(d)
     geom = ExchangerGeometry(tubos=tubos, coraza=coraza,

@@ -178,14 +178,31 @@ class CampoLista:
     def set(self, valor: object) -> bool:
         """Aplica el valor. Devuelve False si no esta entre las opciones.
 
+        Tambien acepta variantes de mayusculas/espacios ('agua', ' Agua ') y
+        las normaliza a la opcion canonica: los proyectos .bb se escriben con
+        el motor, que es insensible a mayusculas, y deben seguir abriendo.
         Nunca se descarta en silencio: `Formulario.cargar` reune los rechazos
-        y los reporta. Aceptar a medias un proyecto .he dejaria la opcion
+        y los reporta. Aceptar a medias un proyecto dejaria la opcion
         anterior en el combo y produciria resultados de otro caso.
         """
-        if valor is None or str(valor) not in self._valores:
+        if valor is None:
             return False
-        self.combo.set(str(valor))
-        self.var.set(str(valor))
+        texto = str(valor).strip()
+        canonico = None
+        for opcion in self._valores:
+            if opcion == texto:
+                canonico = opcion
+                break
+        if canonico is None:
+            plegado = texto.casefold()
+            for opcion in self._valores:
+                if opcion.casefold() == plegado:
+                    canonico = opcion
+                    break
+        if canonico is None:
+            return False
+        self.combo.set(canonico)
+        self.var.set(canonico)
         return True
 
     def get(self) -> str:
