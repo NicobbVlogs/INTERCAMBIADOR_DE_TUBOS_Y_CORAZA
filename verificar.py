@@ -438,8 +438,8 @@ def probar_bell_delaware() -> None:
     base = dict(VALORES_DEFECTO, tout_fri=None, fluido_cal="Agua",
                 m_cal=21.98, tin_cal=33.89, tout_cal=29.44, m_fri=35.2,
                 tin_fri=23.89, long_m=4.8768, baffle_mm=304.8, n_pasos="2")
-    r_kern = ctrl.correr_sizing(dict(base, metodo_coraza="Kern (clásico)"))
-    r_bd = ctrl.correr_sizing(dict(base, metodo_coraza="Bell-Delaware"))
+    r_kern = ctrl.correr_sizing(dict(base, metodo_coraza="kern"))
+    r_bd = ctrl.correr_sizing(dict(base, metodo_coraza="bell_delaware"))
     check(r_bd.U > 0 and r_bd.h_o > 0 and r_bd.dp_s > 0,
           f"el sizing con Bell-Delaware converge: U = {r_bd.U:.0f} W/m2K, "
           f"h_o = {r_bd.h_o:.0f}, dp_s = {r_bd.dp_s:.0f} Pa")
@@ -817,7 +817,7 @@ def probar_ejemplos_gui() -> None:
     texto = {}
     bandas = {}
     aplicado = {}
-    for etiqueta in ("Kern (clásico)", "Bell-Delaware"):
+    for etiqueta in ("kern", "bell_delaware"):
         d = {}
         for k, v in crudo.items():
             d[k] = (v if k in campos_texto else
@@ -828,19 +828,18 @@ def probar_ejemplos_gui() -> None:
         bandas[etiqueta] = [a for a in r.advertencias
                             if "banda de incertidumbre" in a]
         aplicado[etiqueta] = r.metodo_coraza
-    check("viene incluido en el programa" in texto["Kern (clásico)"] and
-          "Bell-Delaware" in texto["Kern (clásico)"],
-          "con Kern el aviso aclara que Bell-Delaware esta incluido y como usarlo")
-    check(aplicado["Bell-Delaware"] == "bell_delaware",
-          "el selector Bell-Delaware llega realmente al motor")
+    check("usó el método de Kern en la coraza" in texto["kern"],
+          "con Kern el aviso identifica el metodo usado sin instrucciones manuales")
+    check(aplicado["bell_delaware"] == "bell_delaware",
+          "el metodo Bell-Delaware llega realmente al motor")
     no_recomienda = all("viene incluido en el programa" not in a
-                        for a in bandas["Bell-Delaware"])
+                        for a in bandas["bell_delaware"])
     check(no_recomienda and all("ya se calcula con Bell-Delaware" in a
-                                for a in bandas["Bell-Delaware"]),
+                                for a in bandas["bell_delaware"]),
           "con Bell-Delaware el aviso NO recomienda el metodo ya en uso "
           "(o no hay aviso porque la banda ya es la base de 15 %)",
-          str(bandas["Bell-Delaware"]))
-    check("la banda la fija el lado" in texto["Kern (clásico)"],
+          str(bandas["bell_delaware"]))
+    check("la banda la fija el lado" in texto["kern"],
           "el aviso indica que lado fija la banda de incertidumbre")
     win.destroy()
 

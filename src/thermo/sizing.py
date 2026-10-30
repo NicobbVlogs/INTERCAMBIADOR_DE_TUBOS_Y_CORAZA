@@ -82,12 +82,12 @@ def resolver_metodo_coraza(metodo_coraza: str, Re_s: float) -> str:
     """
     Resuelve el metodo efectivo del lado coraza.
 
-    'auto' (Automatico, recomendado) elige Bell-Delaware mientras el
+    'auto' (seleccion automatica) elige Bell-Delaware mientras el
     Reynolds de coraza quede dentro de la tabla de Taborek
     (1 <= Re_s <= 1e6); fuera de ese rango cae a Kern, que resiste mejor
     la extrapolacion. Un metodo explicito ('kern' o 'bell_delaware') se
-    respeta tal cual: sirve para comparar o para reproducir el metodo
-    clasico del curso.
+    respeta tal cual: cada proyecto registra el metodo con el que
+    se calculo.
     """
     m = str(metodo_coraza or "kern").strip().lower()
     if m != "auto":
@@ -1115,11 +1115,9 @@ def dimensionar(caliente: Stream, fria: Stream,
                       "dispersión restante es del lado tubos. Contraste con "
                       "datos de servicio, ε-NTU o literatura antes de fabricar.")
         else:
-            cierre = ("Este cálculo usó Kern en la coraza; Bell-Delaware "
-                      "viene incluido en el programa: para el contraste, "
-                      "cambie «Método coraza» a Bell-Delaware en Design y "
-                      "recalcule, o compare con ε-NTU o datos de servicio "
-                      "antes de fabricar.")
+            cierre = ("Este cálculo usó el método de Kern en la coraza "
+                      "(quedó registrado en el proyecto); contraste con "
+                      "ε-NTU o datos de servicio antes de fabricar.")
         adv.append(
             f"Resultado U = {U:,.1f} W/m²·K con banda de incertidumbre estimada "
             f"de ±{banda:.0f} % (régimen tubos: {regimen}, coraza: {regimen_s}; "

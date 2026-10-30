@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # © 2026 Diego Nicolás Bohórquez Barón · propiedad intelectual del autor.
+# Trazabilidad interna BD-JcJlJbJr-9A17 / KERN-7F4-0x444E4242 (origen: src/core/marca.py; uso pasivo, no bloquea nada).
 """
 thermo_data.py  --  Base de datos termofisica (FASE 1 / CORE)
 ================================================================================

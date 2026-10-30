@@ -67,7 +67,6 @@ VALORES_DEFECTO: Dict[str, Any] = {
     "p_coraza_bar": 10.0, "p_tubos_bar": 10.0,
     "mat_carcasa": "Acero al carbono", "corrosion_mm": 3.2, "d_perno_mm": 19.05,
     "n_tt": 500, "d_s_mm": 630.0,
-    "metodo_coraza": "Automático (recomendado)",
 }
 
 # Ayudas del modo de trabajo (paso 1 de la hoja de diseño).
@@ -111,6 +110,7 @@ class Aplicacion(ctk.CTk):
         self.res_mecanico = None       # MechanicalResult
         self.modo: str = ""            # 'sizing' | 'rating'
         self.ruta_actual: Optional[str] = None
+        self.metodo_proyecto: str = "auto"
         self.cotas: Dict[str, str] = {}
         self.ultimo_D_s: Optional[float] = None   # para el botón «½·D_s»
 
@@ -292,6 +292,7 @@ class Aplicacion(ctk.CTk):
         def accion():
             datos = io_state.abrir(ruta)
             self.form.cargar(datos)
+            self.metodo_proyecto = str(datos.get("metodo_coraza") or "auto")
             resultado["modo"] = ctrl.modo_calculo(datos)
             resultado["ok"] = True
             self.ruta_actual = None        # evita sobrescribir el ejemplo
@@ -601,11 +602,6 @@ class Aplicacion(ctk.CTk):
             m, 2, "Cabezal trasero", ctrl.CABEZAL_TRASERO, valor="M",
             ayuda="L/M/N (espejo fijo) · P/S/T/W (flotantes) · U (haz en U).",
             comando=self._actualizar_designacion_tema))
-        f.add("metodo_coraza", CampoLista(
-            m, 4, "Método coraza", ctrl.METODOS_CORAZA_UI,
-            valor="Automático (recomendado)",
-            ayuda="Kern: correlación clásica (cap. 7). Bell-Delaware: corrige "
-                  "fugas y bypass con Jc, Jl, Jb, Jr (más riguroso)."))
         rotulo(m, text="Designación TEMA:", style="Nota.TLabel"
                   ).grid(row=3, column=0, sticky="w", padx=(6, 8), pady=(6, 0))
         self.lbl_designacion = rotulo(
@@ -912,11 +908,13 @@ class Aplicacion(ctk.CTk):
 
     def _sizing(self) -> None:
         datos = self.form.leer()
+        datos["metodo_coraza"] = self.metodo_proyecto
         paquete = self._modelo_sizing(datos)
         self._aplicar_sizing(datos, *paquete)
 
     def _rating(self) -> None:
         datos = self.form.leer()
+        datos["metodo_coraza"] = self.metodo_proyecto
         paquete = self._modelo_rating(datos)
         self._aplicar_rating(datos, *paquete)
 
@@ -1359,6 +1357,7 @@ class Aplicacion(ctk.CTk):
         self._restaurar_defecto()
         self.res_termico = self.res_mecanico = None
         self.modo, self.ruta_actual = "", None
+        self.metodo_proyecto = "auto"
         self.ultimo_D_s = None
         for tabla in (self.tbl_termico, self.tbl_hidraulico, self.tbl_mecanico):
             tabla.delete(*tabla.get_children())
@@ -1376,7 +1375,9 @@ class Aplicacion(ctk.CTk):
             return
 
         def accion():
-            self.form.cargar(io_state.abrir(ruta))
+            datos = io_state.abrir(ruta)
+            self.form.cargar(datos)
+            self.metodo_proyecto = str(datos.get("metodo_coraza") or "auto")
             self.ruta_actual = ruta
             self._actualizar_limites()
             self._actualizar_designacion_tema()
@@ -1401,6 +1402,7 @@ class Aplicacion(ctk.CTk):
     def _escribir(self, ruta: str) -> None:
         def accion():
             datos = {k: c.var.get() for k, c in self.form.campos.items()}
+            datos["metodo_coraza"] = self.metodo_proyecto
             io_state.guardar(ruta, datos)
             self.ruta_actual = ruta
             self.title(f"{TITULO}  —  {os.path.basename(ruta)}")
@@ -1418,8 +1420,8 @@ class Aplicacion(ctk.CTk):
             "Intercambiador de Tubos y Coraza\n"
             "Software educativo de diseño de intercambiadores de calor\n"
             "de tubos y coraza.\n\n"
-            "• Térmico: Kern (LMTD + factor F) y Bell-Delaware opcional\n"
-            "  en el lado coraza (factores Jc, Jl, Jb, Jr).\n"
+            "• Térmico: Kern (LMTD + factor F); el método de coraza\n"
+            "  (Kern o Bell-Delaware) se selecciona automáticamente.\n"
             "• Mecánico: estándar TEMA Clase C.\n"
             "• Base termofísica propia (10 fluidos, 5 materiales).\n\n"
             f"• Huella de autenticidad: {marca.huella()}\n\n"
@@ -1490,8 +1492,9 @@ AYUDA = [
      "aceptado hasta 100 °C como líquido presurizado, tal como trabajan los "
      "ejercicios de referencia de la literatura."),
     ("11. Régimen de flujo e incertidumbre",
-     "El lado coraza puede calcularse con Kern (clásico) o con Bell-Delaware "
-     "(factores Jc, Jl, Jb y Jr sobre el banco ideal; más riguroso). "
+     "El lado coraza se calcula con Kern o con Bell-Delaware (factores "
+     "Jc, Jl, Jb y Jr sobre el banco ideal), según el método automático "
+     "que describe el punto 12. "
      "Las correlaciones cubren los tres regímenes: Hausen (1959) para "
      "laminar en tubos, Gnielinski (1976) para transición y turbulento "
      "(con respaldo de Dittus-Boelter), y en coraza el método de Kern con "
@@ -1504,24 +1507,23 @@ AYUDA = [
      "en laminar suele quedar fijada por el lado tubos. En los regímenes "
      "no turbulentos contraste el resultado con datos de servicio, ε-NTU "
      "o literatura antes de fabricar."),
-    ("12. Método de coraza: Kern y Bell-Delaware",
-     "En Design, el campo «Método coraza» elige cómo se calcula el lado "
-     "coraza. «Automático» (recomendado) aplica Bell-Delaware mientras el "
-     "Reynolds de coraza esté cubierto por la tabla de Taborek (1–1e6) y "
-     "vuelve a Kern fuera de ese rango; el método realmente usado queda "
-     "registrado en el resultado y en el proyecto .bb. Kern usa las "
-     "correlaciones clásicas del capítulo 7 (LMTD con factor F). Bell-Delaware descompone el flujo del banco en "
-     "cinco corrientes (cruzado ideal, fugas deflector-coraza y "
-     "deflector-tubo, bypass haz-coraza y partición de paso) y corrige el "
-     "banco ideal con los factores Jc, Jl, Jb y Jr; la caída de presión se "
-     "calcula en tres componentes (cruzado, ventana y extremos). Ambos "
-     "métodos son monofásicos: no cubren condensación ni ebullición. El "
-     "método elegido se guarda dentro del proyecto .bb, así que al abrir "
-     "un archivo se recupera exactamente con el que se calculó. En los "
-     "ejemplos de la literatura, Bell-Delaware da h_o entre 0,87 y 1,11 "
-     "veces el de Kern y caídas de presión entre 30 y 60 % menores; en el "
-     "caso de Tan y Fok acerca el resultado al artículo publicado "
-     "(U 433 frente a 447 W/m2K)."),
+    ("12. Método de coraza: selección automática",
+     "El método del lado coraza se elige automáticamente, por facilidad "
+     "de uso: el programa aplica Bell-Delaware mientras el Reynolds de "
+     "coraza esté cubierto por la tabla de Taborek (1–1e6) y vuelve a "
+     "Kern fuera de ese rango. Kern usa las correlaciones clásicas del "
+     "capítulo 7 (LMTD con factor F); Bell-Delaware descompone el flujo "
+     "del banco en cinco corrientes (cruzado ideal, fugas deflector-coraza "
+     "y deflector-tubo, bypass haz-coraza y partición de paso) y corrige "
+     "el banco ideal con los factores Jc, Jl, Jb y Jr; la caída de "
+     "presión se calcula en tres componentes (cruzado, ventana y "
+     "extremos). Ambos métodos son monofásicos: no cubren condensación ni "
+     "ebullición. El método usado queda registrado en el resultado y en "
+     "el proyecto .bb, de modo que cada caso se reproduce tal como se "
+     "calculó. En los ejemplos de la literatura, Bell-Delaware da h_o "
+     "entre 0,87 y 1,11 veces el de Kern y caídas de presión entre 30 y "
+     "60 % menores; en el caso de Tan y Fok acerca el resultado al "
+     "artículo publicado (U 433 frente a 447 W/m2K)."),
 ]
 
 

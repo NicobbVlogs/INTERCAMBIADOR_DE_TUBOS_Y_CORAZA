@@ -336,8 +336,7 @@ def _alertas_delta_p(d: Dict[str, Any], r) -> None:
 
 
 METODOS_CORAZA = ("kern", "bell_delaware", "auto")
-METODOS_CORAZA_UI = ("Automático (recomendado)", "Kern (clásico)",
-                     "Bell-Delaware")
+
 
 
 def _metodo_coraza(d: Dict[str, Any]) -> str:

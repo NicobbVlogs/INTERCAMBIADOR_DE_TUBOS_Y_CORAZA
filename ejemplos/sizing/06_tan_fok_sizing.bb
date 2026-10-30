@@ -34,6 +34,6 @@
     "d_s_mm": "420.16",
     "dp_t_max": "",
     "dp_s_max": "",
-    "metodo_coraza": "Kern (clásico)"
+    "metodo_coraza": "kern"
   }
 }

@@ -34,7 +34,7 @@
     "cab_frontal": "A",
     "cab_trasero": "L",
     "mat_carcasa": "Acero al carbono",
-    "metodo_coraza": "Kern (clásico)"
+    "metodo_coraza": "kern"
   },
   "autor": "Diego Nicolás Bohórquez Barón",
   "copyright": "© 2026 Diego Nicolás Bohórquez Barón"
